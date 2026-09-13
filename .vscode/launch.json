@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "SandI", // 调试配置名称，可自定义
+            "type": "cppvsdbg", // Windows用cppvsdbg，macOS/Linux用lldb
+            "request": "launch",
+            "program": "${fileDirname}\\${fileBasenameNoExtension}.exe", // 要调试的exe路径，和tasks.json输出一致
+            "args": [
+                "src.sand"
+            ], // 程序运行时的命令行参数，无则留空
+            "stopAtEntry": false, // 是否在程序入口处暂停（main函数第一行），新手可设为true
+            "cwd": "${fileDirname}", // 工作目录（程序运行的目录）
+            "environment": [],
+            "preLaunchTask": "Sand Interpreter", // 调试前先执行的任务，必须和tasks.json的label一致
+            "console": "externalTerminal", // Windows建议开控制台，避免中文乱码
+        }
+    ]
+}
