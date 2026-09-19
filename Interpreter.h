@@ -997,6 +997,51 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 auto arg = eval(node->children[0].get(), scope);
                 return RuntimeVal(arg.to_string());
             }
+            if (node->val == "time")
+            {
+                if (node->children.size() != 0)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: time() takes no arguments\n";
+                    return RuntimeVal();
+                }
+                auto now = std::chrono::system_clock::now();
+                auto sec = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+                return RuntimeVal(BigDecimal(std::to_string(sec)));
+            }
+            if (node->val == "time_ms")
+            {
+                if (node->children.size() != 0)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: time_ms() takes no arguments\n";
+                    return RuntimeVal();
+                }
+                auto now = std::chrono::system_clock::now();
+                auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+                return RuntimeVal(BigDecimal(std::to_string(ms)));
+            }
+            if (node->val == "sleep")
+            {
+                if (node->children.size() != 1)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: sleep() expects 1 argument(ms)\n";
+                    return RuntimeVal();
+                }
+                auto arg = eval(node->children[0].get(), scope);
+                auto *numptr = arg.as_num();
+                if (!numptr)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: sleep() argument must be number\n";
+                    return RuntimeVal();
+                }
+                size_t ms;
+                if (!safe_to_size_t(numptr->value, ms))
+                {
+                    std::cerr << "[" << ln << "] Runtime error: sleep() invalid millisecond value\n";
+                    return RuntimeVal();
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+                return RuntimeVal();
+            }
 
             auto fv = RuntimeVal(std::move(*scope->get(node->val)));
             auto *fptr = fv.as_func();

@@ -4,7 +4,7 @@ int main(int argc, char *argv[])
 
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter 1.5.1.alpha\n";
+        std::cout << "SandScript interpreter 1.5.2.alpha\n";
         std::cout << "Usage: Sandi.exe script.sand\n";
         std::cout << "Example: Sandi.exe test.sand\n";
         return 1;
