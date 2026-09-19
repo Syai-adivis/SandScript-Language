@@ -16,7 +16,7 @@ class Student : Person begin
     end
     
     func say() begin
-        outputLine("Student override say:",self.name,"\n",self.id);
+        outputLine("Student override say:\n",self.name,"\n",self.id);
     end
 end
 
