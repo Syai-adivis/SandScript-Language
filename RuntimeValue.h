@@ -1,38 +1,30 @@
 #ifndef RUNTIME_VALUE_H
 #define RUNTIME_VALUE_H
 #include "includes.h"
-
 const int BD_DIV_PRECISION = 50;
-
 // ===================== BigDecimal =====================
 struct BigDecimal
 {
     std::string integer;
     std::string fractional;
     bool negative = false;
-
     BigDecimal() = default;
     BigDecimal(const std::string &s);
     BigDecimal(long long n);
-
     void normalize();
     int compare(const BigDecimal &other) const;
-
     BigDecimal operator+(const BigDecimal &other) const;
     BigDecimal operator-(const BigDecimal &other) const;
     BigDecimal operator*(const BigDecimal &other) const;
     BigDecimal operator/(const BigDecimal &other) const;
-
     bool operator==(const BigDecimal &o) const { return compare(o) == 0; }
     bool operator!=(const BigDecimal &o) const { return compare(o) != 0; }
     bool operator<(const BigDecimal &o) const { return compare(o) < 0; }
     bool operator>(const BigDecimal &o) const { return compare(o) > 0; }
     bool operator<=(const BigDecimal &o) const { return compare(o) <= 0; }
     bool operator>=(const BigDecimal &o) const { return compare(o) >= 0; }
-
     std::string to_string() const;
 };
-
 BigDecimal::BigDecimal(const std::string &s)
 {
     if (s.empty())
@@ -56,7 +48,6 @@ BigDecimal::BigDecimal(const std::string &s)
     }
     normalize();
 }
-
 BigDecimal::BigDecimal(long long n)
 {
     if (n < 0)
@@ -68,7 +59,6 @@ BigDecimal::BigDecimal(long long n)
     fractional = "";
     normalize();
 }
-
 void BigDecimal::normalize()
 {
     size_t start = 0;
@@ -83,7 +73,6 @@ void BigDecimal::normalize()
         negative = false;
     }
 }
-
 [[maybe_unused]] static std::string add_str(const std::string &a, const std::string &b)
 {
     std::string res;
@@ -100,7 +89,6 @@ void BigDecimal::normalize()
     std::reverse(res.begin(), res.end());
     return res;
 }
-
 [[maybe_unused]] static std::string sub_str(const std::string &a, const std::string &b)
 {
     std::string res;
@@ -125,7 +113,6 @@ void BigDecimal::normalize()
         st++;
     return res.substr(st);
 }
-
 [[maybe_unused]] static std::string mul_str(const std::string &a, const std::string &b)
 {
     std::vector<int> vec(a.size() + b.size(), 0);
@@ -152,14 +139,12 @@ void BigDecimal::normalize()
         s = "0";
     return s;
 }
-
 [[maybe_unused]] static int cmp_raw(const std::string &a, const std::string &b)
 {
     if (a.size() != b.size())
         return a.size() > b.size() ? 1 : -1;
     return a.compare(b);
 }
-
 [[maybe_unused]] static void div_raw(std::string a, std::string b, std::string &quotient, std::string &rem)
 {
     quotient.clear();
@@ -188,7 +173,6 @@ void BigDecimal::normalize()
     if (quotient.empty())
         quotient = "0";
 }
-
 int BigDecimal::compare(const BigDecimal &other) const
 {
     if (negative != other.negative)
@@ -215,7 +199,6 @@ int BigDecimal::compare(const BigDecimal &other) const
     }
     return 0;
 }
-
 BigDecimal BigDecimal::operator+(const BigDecimal &other) const
 {
     BigDecimal res;
@@ -261,14 +244,12 @@ BigDecimal BigDecimal::operator+(const BigDecimal &other) const
     res.normalize();
     return res;
 }
-
 BigDecimal BigDecimal::operator-(const BigDecimal &other) const
 {
     BigDecimal neg_other = other;
     neg_other.negative = !neg_other.negative;
     return *this + neg_other;
 }
-
 BigDecimal BigDecimal::operator*(const BigDecimal &other) const
 {
     BigDecimal res;
@@ -291,7 +272,6 @@ BigDecimal BigDecimal::operator*(const BigDecimal &other) const
     res.normalize();
     return res;
 }
-
 BigDecimal BigDecimal::operator/(const BigDecimal &other) const
 {
     if (other.compare(BigDecimal("0")) == 0)
@@ -323,7 +303,6 @@ BigDecimal BigDecimal::operator/(const BigDecimal &other) const
     res.normalize();
     return res;
 }
-
 std::string BigDecimal::to_string() const
 {
     std::string out;
@@ -334,30 +313,26 @@ std::string BigDecimal::to_string() const
         out += "." + fractional;
     return out;
 }
-
 // ===================== 前向声明 & 基础类型 =====================
 class ASTNode;
 using FuncT = std::pair<std::vector<std::string>, ASTNode *>;
-
 struct ClassMeta
 {
     std::string name;
     std::string super_class_name;
+    std::shared_ptr<ClassMeta> super_meta;
     std::unordered_map<std::string, FuncT> instance_methods;
     std::unordered_map<std::string, FuncT> static_methods;
     ~ClassMeta() = default;
 };
-
 struct ObjectInstance
 {
     std::shared_ptr<ClassMeta> meta;
     std::unordered_map<std::string, struct RuntimeVal> members;
-
     ObjectInstance() = default;
     ObjectInstance(std::shared_ptr<ClassMeta> m, std::unordered_map<std::string, struct RuntimeVal> mem)
         : meta(std::move(m)), members(std::move(mem)) {}
 };
-
 enum class RtKind
 {
     NUMBER,
@@ -369,7 +344,6 @@ enum class RtKind
     CLASS_META,
     OBJECT
 };
-
 // 抽象基类，只放虚函数，不实例化容器
 struct RuntimeValueBase
 {
@@ -379,10 +353,8 @@ struct RuntimeValueBase
     virtual std::string to_string() const = 0;
     virtual std::unique_ptr<RuntimeValueBase> clone() const = 0;
 };
-
 // 前向声明
 struct RuntimeVal;
-
 // ===================== 派生子类【仅声明，不写函数体】 =====================
 struct NumValue : RuntimeValueBase
 {
@@ -391,7 +363,6 @@ struct NumValue : RuntimeValueBase
     std::string to_string() const override;
     std::unique_ptr<RuntimeValueBase> clone() const override;
 };
-
 struct StrValue : RuntimeValueBase
 {
     std::string value;
@@ -399,7 +370,6 @@ struct StrValue : RuntimeValueBase
     std::string to_string() const override;
     std::unique_ptr<RuntimeValueBase> clone() const override;
 };
-
 struct ArrayValue : RuntimeValueBase
 {
     using Array = std::vector<RuntimeVal>;
@@ -408,7 +378,6 @@ struct ArrayValue : RuntimeValueBase
     std::string to_string() const override;
     std::unique_ptr<RuntimeValueBase> clone() const override;
 };
-
 struct DictValue : RuntimeValueBase
 {
     using Dict = std::map<RuntimeVal, RuntimeVal>;
@@ -417,7 +386,6 @@ struct DictValue : RuntimeValueBase
     std::string to_string() const override;
     std::unique_ptr<RuntimeValueBase> clone() const override;
 };
-
 struct FuncValue : RuntimeValueBase
 {
     FuncT value;
@@ -425,14 +393,12 @@ struct FuncValue : RuntimeValueBase
     std::string to_string() const override;
     std::unique_ptr<RuntimeValueBase> clone() const override;
 };
-
 struct NilValue : RuntimeValueBase
 {
     NilValue();
     std::string to_string() const override;
     std::unique_ptr<RuntimeValueBase> clone() const override;
 };
-
 struct ClassMetaValue : RuntimeValueBase
 {
     std::shared_ptr<ClassMeta> value;
@@ -440,20 +406,18 @@ struct ClassMetaValue : RuntimeValueBase
     std::string to_string() const override;
     std::unique_ptr<RuntimeValueBase> clone() const override;
 };
-
 struct ObjectValue : RuntimeValueBase
 {
-    ObjectInstance value;
-    explicit ObjectValue(ObjectInstance v);
+    // 【改动】不再直接存对象，存shared_ptr，实现引用语义
+    std::shared_ptr<ObjectInstance> value;
+    explicit ObjectValue(std::shared_ptr<ObjectInstance> oi);
     std::string to_string() const override;
     std::unique_ptr<RuntimeValueBase> clone() const override;
 };
-
 // ===================== RuntimeVal 完整定义 =====================
 struct RuntimeVal
 {
     std::unique_ptr<RuntimeValueBase> ptr;
-
     RuntimeVal();
     explicit RuntimeVal(std::unique_ptr<RuntimeValueBase> basePtr);
     explicit RuntimeVal(BigDecimal n);
@@ -462,7 +426,8 @@ struct RuntimeVal
     explicit RuntimeVal(DictValue::Dict d);
     explicit RuntimeVal(FuncT f);
     explicit RuntimeVal(std::shared_ptr<ClassMeta> cm);
-    explicit RuntimeVal(ObjectInstance oi);
+    // 【改动】删除旧 ObjectInstance 栈对象构造，改用shared_ptr
+    explicit RuntimeVal(std::shared_ptr<ObjectInstance> oi);
 
     // 移动语义，删除拷贝
     RuntimeVal(RuntimeVal &&) noexcept = default;
@@ -489,69 +454,65 @@ struct RuntimeVal
     ObjectValue *as_object();
     const ObjectValue *as_object() const;
 };
-
 // 对外别名
 using Array = ArrayValue::Array;
 using Dict = DictValue::Dict;
-
-// ===================== 全部inline实现（所有类型完整之后） =====================
+// ==========================================
 inline NumValue::NumValue(BigDecimal v)
     : RuntimeValueBase(RtKind::NUMBER), value(std::move(v)) {}
-
 inline StrValue::StrValue(std::string v)
     : RuntimeValueBase(RtKind::STRING), value(std::move(v)) {}
-
 inline ArrayValue::ArrayValue(Array v)
     : RuntimeValueBase(RtKind::ARRAY), value(std::move(v)) {}
-
 inline DictValue::DictValue(Dict v)
     : RuntimeValueBase(RtKind::DICT), value(std::move(v)) {}
-
 inline FuncValue::FuncValue(FuncT v)
     : RuntimeValueBase(RtKind::FUNCTION), value(std::move(v)) {}
-
 inline NilValue::NilValue()
     : RuntimeValueBase(RtKind::NIL) {}
-
 inline ClassMetaValue::ClassMetaValue(std::shared_ptr<ClassMeta> v)
     : RuntimeValueBase(RtKind::CLASS_META), value(std::move(v)) {}
 
-inline ObjectValue::ObjectValue(ObjectInstance v)
-    : RuntimeValueBase(RtKind::OBJECT), value(std::move(v)) {}
+// 【改动】ObjectValue 构造
+inline ObjectValue::ObjectValue(std::shared_ptr<ObjectInstance> oi)
+    : RuntimeValueBase(RtKind::OBJECT), value(std::move(oi)) {}
+
+inline RuntimeVal::RuntimeVal(std::shared_ptr<ObjectInstance> oi)
+    : ptr(std::make_unique<ObjectValue>(std::move(oi))) {}
+
+// 【改动】ObjectValue::clone：只复制shared_ptr，不拷贝成员，引用语义核心
+inline std::unique_ptr<RuntimeValueBase> ObjectValue::clone() const
+{
+    return std::make_unique<ObjectValue>(value);
+}
+
+inline std::string ObjectValue::to_string() const
+{
+    return "<object " + value->meta->name + ">";
+}
 
 // RuntimeVal 构造
 inline RuntimeVal::RuntimeVal()
     : ptr(std::make_unique<NilValue>()) {}
-
 inline RuntimeVal::RuntimeVal(std::unique_ptr<RuntimeValueBase> basePtr)
     : ptr(std::move(basePtr)) {}
-
 inline RuntimeVal::RuntimeVal(BigDecimal n)
     : ptr(std::make_unique<NumValue>(std::move(n))) {}
-
 inline RuntimeVal::RuntimeVal(std::string s)
     : ptr(std::make_unique<StrValue>(std::move(s))) {}
-
 inline RuntimeVal::RuntimeVal(Array a)
     : ptr(std::make_unique<ArrayValue>(std::move(a))) {}
-
 inline RuntimeVal::RuntimeVal(Dict d)
     : ptr(std::make_unique<DictValue>(std::move(d))) {}
-
 inline RuntimeVal::RuntimeVal(FuncT f)
     : ptr(std::make_unique<FuncValue>(std::move(f))) {}
-
 inline RuntimeVal::RuntimeVal(std::shared_ptr<ClassMeta> cm)
     : ptr(std::make_unique<ClassMetaValue>(std::move(cm))) {}
-
-inline RuntimeVal::RuntimeVal(ObjectInstance oi)
-    : ptr(std::make_unique<ObjectValue>(std::move(oi))) {}
 
 inline std::string RuntimeVal::to_string() const
 {
     return ptr ? ptr->to_string() : "<null>";
 }
-
 inline RuntimeVal RuntimeVal::clone() const
 {
     if (!ptr)
@@ -567,7 +528,6 @@ inline const NumValue *RuntimeVal::as_num() const
 {
     return dynamic_cast<const NumValue *>(ptr.get());
 }
-
 inline StrValue *RuntimeVal::as_str()
 {
     return dynamic_cast<StrValue *>(ptr.get());
@@ -576,7 +536,6 @@ inline const StrValue *RuntimeVal::as_str() const
 {
     return dynamic_cast<const StrValue *>(ptr.get());
 }
-
 inline ArrayValue *RuntimeVal::as_array()
 {
     return dynamic_cast<ArrayValue *>(ptr.get());
@@ -585,7 +544,6 @@ inline const ArrayValue *RuntimeVal::as_array() const
 {
     return dynamic_cast<const ArrayValue *>(ptr.get());
 }
-
 inline DictValue *RuntimeVal::as_dict()
 {
     return dynamic_cast<DictValue *>(ptr.get());
@@ -594,7 +552,6 @@ inline const DictValue *RuntimeVal::as_dict() const
 {
     return dynamic_cast<const DictValue *>(ptr.get());
 }
-
 inline FuncValue *RuntimeVal::as_func()
 {
     return dynamic_cast<FuncValue *>(ptr.get());
@@ -603,7 +560,6 @@ inline const FuncValue *RuntimeVal::as_func() const
 {
     return dynamic_cast<const FuncValue *>(ptr.get());
 }
-
 inline ClassMetaValue *RuntimeVal::as_classmeta()
 {
     return dynamic_cast<ClassMetaValue *>(ptr.get());
@@ -612,7 +568,6 @@ inline const ClassMetaValue *RuntimeVal::as_classmeta() const
 {
     return dynamic_cast<const ClassMetaValue *>(ptr.get());
 }
-
 inline ObjectValue *RuntimeVal::as_object()
 {
     return dynamic_cast<ObjectValue *>(ptr.get());
@@ -631,7 +586,6 @@ inline std::unique_ptr<RuntimeValueBase> NumValue::clone() const
 {
     return std::make_unique<NumValue>(value);
 }
-
 inline std::string StrValue::to_string() const
 {
     return "\"" + value + "\"";
@@ -640,7 +594,6 @@ inline std::unique_ptr<RuntimeValueBase> StrValue::clone() const
 {
     return std::make_unique<StrValue>(value);
 }
-
 inline std::string ArrayValue::to_string() const
 {
     std::string res = "[";
@@ -663,7 +616,6 @@ inline std::unique_ptr<RuntimeValueBase> ArrayValue::clone() const
     }
     return std::make_unique<ArrayValue>(std::move(newarr));
 }
-
 inline std::string DictValue::to_string() const
 {
     std::string res = "{";
@@ -687,7 +639,6 @@ inline std::unique_ptr<RuntimeValueBase> DictValue::clone() const
     }
     return std::make_unique<DictValue>(std::move(newdict));
 }
-
 inline std::string FuncValue::to_string() const
 {
     return "<function>";
@@ -696,7 +647,6 @@ inline std::unique_ptr<RuntimeValueBase> FuncValue::clone() const
 {
     return std::make_unique<FuncValue>(value);
 }
-
 inline std::string NilValue::to_string() const
 {
     return "<null>";
@@ -705,7 +655,6 @@ inline std::unique_ptr<RuntimeValueBase> NilValue::clone() const
 {
     return std::make_unique<NilValue>();
 }
-
 inline std::string ClassMetaValue::to_string() const
 {
     return "<class " + value->name + ">";
@@ -713,21 +662,6 @@ inline std::string ClassMetaValue::to_string() const
 inline std::unique_ptr<RuntimeValueBase> ClassMetaValue::clone() const
 {
     return std::make_unique<ClassMetaValue>(value);
-}
-
-inline std::string ObjectValue::to_string() const
-{
-    return "<object " + value.meta->name + ">";
-}
-inline std::unique_ptr<RuntimeValueBase> ObjectValue::clone() const
-{
-    ObjectInstance newobj;
-    newobj.meta = value.meta;
-    for (auto &pair : value.members)
-    {
-        newobj.members[pair.first] = pair.second.clone();
-    }
-    return std::make_unique<ObjectValue>(std::move(newobj));
 }
 
 // ===================== 比较运算符 =====================
@@ -777,32 +711,19 @@ inline bool operator==(const RuntimeVal &a, const RuntimeVal &b)
         return a.as_classmeta()->value.get() == b.as_classmeta()->value.get();
     case RtKind::OBJECT:
     {
+        // 对象改为身份相等：shared_ptr指针是否指向同一个堆实例
         const auto &objA = a.as_object()->value;
         const auto &objB = b.as_object()->value;
-        if (objA.meta.get() != objB.meta.get())
-            return false;
-        if (objA.members.size() != objB.members.size())
-            return false;
-        for (const auto &kv : objA.members)
-        {
-            auto it = objB.members.find(kv.first);
-            if (it == objB.members.end())
-                return false;
-            if (!(kv.second == it->second))
-                return false;
-        }
-        return true;
+        return objA.get() == objB.get();
     }
     default:
         return false;
     }
 }
-
 inline bool operator!=(const RuntimeVal &a, const RuntimeVal &b)
 {
     return !(a == b);
 }
-
 inline bool operator<(const RuntimeVal &a, const RuntimeVal &b)
 {
     if (a.type() != b.type())
@@ -856,25 +777,10 @@ inline bool operator<(const RuntimeVal &a, const RuntimeVal &b)
     {
         const auto &objA = a.as_object()->value;
         const auto &objB = b.as_object()->value;
-        if (objA.meta.get() != objB.meta.get())
-            return objA.meta.get() < objB.meta.get();
-        auto ia = objA.members.begin(), ib = objB.members.begin();
-        for (; ia != objA.members.end() && ib != objB.members.end(); ++ia, ++ib)
-        {
-            if (ia->first < ib->first)
-                return true;
-            if (ib->first < ia->first)
-                return false;
-            if (ia->second < ib->second)
-                return true;
-            if (ib->second < ia->second)
-                return false;
-        }
-        return objA.members.size() < objB.members.size();
+        return objA.get() < objB.get();
     }
     default:
         return false;
     }
 }
-
 #endif // RUNTIME_VALUE_H

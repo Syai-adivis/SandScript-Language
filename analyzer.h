@@ -96,6 +96,7 @@ enum TokenType
     COMMA,
     COLON,
     SEMI,
+    T_SUPER,
     DOTDOTDOT,
     DOT
 };
@@ -193,6 +194,12 @@ struct Lexer
             t = T_WHILE;
         else if (word == "for")
             t = T_FOR;
+        else if (word == "and")
+            t = AND_AND;
+        else if (word == "or")
+            t = OR_OR;
+        else if (word == "not")
+            t = BANG;
         else if (word == "in")
             t = T_IN;
         else if (word == "func")
@@ -223,6 +230,8 @@ struct Lexer
             t = T_STATIC;
         else if (word == "new")
             t = T_NEW;
+        else if (word == "super")
+            t = T_SUPER;
         return Token{t, word, start, ln};
     }
     Token read_num()
@@ -1007,6 +1016,11 @@ std::unique_ptr<ASTNode> Parser::parse_primary()
     case T_NEW:
     {
         return parse_new();
+    }
+    case T_SUPER:
+    {
+        next_tok();
+        return parse_call_or_index("super", ln);
     }
     default:
         std::cerr << "[" << ln << "] Parse error: bad expression\n";

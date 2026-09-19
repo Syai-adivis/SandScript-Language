@@ -35,7 +35,10 @@ struct Interpreter
     bool has_return = false;
     bool break_flag = false;
     bool continue_flag = false;
-
+    FuncT *lookup_instance_method_from(ClassMeta *start_meta, const std::string &name);
+    FuncT *lookup_instance_method(ClassMeta *meta, const std::string &name);
+    FuncT *lookup_static_method(ClassMeta *meta, const std::string &name);
+    std::shared_ptr<ClassMeta> resolve_superclass(const std::string &super_name, Scope *scope, size_t line);
     RuntimeVal *get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *scope, size_t line);
     void import_file(const std::string &path);
     RuntimeVal eval(ASTNode *node, Scope *scope);
@@ -82,6 +85,73 @@ RuntimeVal *Interpreter::get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *
 
     std::cerr << "[" << line << "] Runtime error: cannot index‑assign non‑array/non‑dict\n";
     return nullptr;
+}
+
+FuncT *Interpreter::lookup_instance_method(ClassMeta *meta, const std::string &name)
+{
+    if (!meta)
+        return nullptr;
+    auto it = meta->instance_methods.find(name);
+    if (it != meta->instance_methods.end())
+    {
+        return &it->second;
+    }
+    // 向父类递归查找
+    if (meta->super_meta)
+    {
+        return lookup_instance_method(meta->super_meta.get(), name);
+    }
+    return nullptr;
+}
+
+FuncT *Interpreter::lookup_instance_method_from(ClassMeta *start_meta, const std::string &name)
+{
+    ClassMeta *cur = start_meta;
+    while (cur != nullptr)
+    {
+        auto it = cur->instance_methods.find(name);
+        if (it != cur->instance_methods.end())
+        {
+            return &it->second;
+        }
+        cur = cur->super_meta.get();
+    }
+    return nullptr;
+}
+
+FuncT *Interpreter::lookup_static_method(ClassMeta *meta, const std::string &name)
+{
+    if (!meta)
+        return nullptr;
+    auto it = meta->static_methods.find(name);
+    if (it != meta->static_methods.end())
+    {
+        return &it->second;
+    }
+    if (meta->super_meta)
+    {
+        return lookup_static_method(meta->super_meta.get(), name);
+    }
+    return nullptr;
+}
+
+std::shared_ptr<ClassMeta> Interpreter::resolve_superclass(const std::string &super_name, Scope *scope, size_t line)
+{
+    if (super_name.empty())
+        return nullptr;
+    RuntimeVal *super_val = scope->get(super_name);
+    if (!super_val)
+    {
+        std::cerr << "[" << line << "] Runtime error: super class '" << super_name << "' not defined\n";
+        return nullptr;
+    }
+    auto *super_meta_ptr = super_val->as_classmeta();
+    if (!super_meta_ptr)
+    {
+        std::cerr << "[" << line << "] Runtime error: '" << super_name << "' is not a class\n";
+        return nullptr;
+    }
+    return super_meta_ptr->value;
 }
 
 void Interpreter::import_file(const std::string &path)
@@ -176,7 +246,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
             auto *obj_ptr = base_val.as_object();
             if (obj_ptr != nullptr)
             {
-                obj_ptr->value.members[mem_name] = std::move(rhs_val);
+                obj_ptr->value->members[mem_name] = std::move(rhs_val);
                 return RuntimeVal();
             }
             std::cerr << "[" << ln << "] Runtime error: member assign requires object instance\n";
@@ -614,7 +684,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
             auto *obj_ptr = base_val.as_object();
             if (obj_ptr != nullptr)
             {
-                auto &members = obj_ptr->value.members;
+                auto &members = obj_ptr->value->members;
                 auto it = members.find(mem);
                 if (it != members.end())
                 {
@@ -640,22 +710,57 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
         }
         case ASTNode::MEMBER_CALL:
         {
-            auto base_val = eval(node->children[0].get(), scope);
             std::string method_name = node->val;
+            bool is_super_call = false;
+            std::shared_ptr<ClassMeta> super_lookup_meta;
+            RuntimeVal base_val;
+            if (node->children[0]->kind == ASTNode::VAR && node->children[0]->val == "super")
+            {
+                is_super_call = true;
+                // super不eval VAR("super")，直接从scope拿__super_meta和self
+                auto p_super_meta = scope->get("__super_meta");
+                auto p_self = scope->get("self");
+                if (!p_super_meta || p_super_meta->as_classmeta() == nullptr || !p_self)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: super can only be used inside instance method\n";
+                    return RuntimeVal();
+                }
+                super_lookup_meta = p_super_meta->as_classmeta()->value;
+                base_val = p_self->clone(); // super的base就是当前self对象
+            }
+            else
+            {
+                // 普通对象，正常eval base
+                base_val = eval(node->children[0].get(), scope);
+            }
+            // =====================================================
+
             auto *obj_ptr = base_val.as_object();
             if (obj_ptr != nullptr)
             {
-                ObjectInstance &obj = obj_ptr->value;
+                ObjectInstance &obj = *obj_ptr->value;
                 ClassMeta *meta = obj.meta.get();
-                auto it = meta->instance_methods.find(method_name);
-                if (it == meta->instance_methods.end())
+                FuncT *ft_ptr;
+                if (is_super_call)
+                {
+                    ft_ptr = lookup_instance_method_from(super_lookup_meta.get(), method_name);
+                }
+                else
+                {
+                    ft_ptr = lookup_instance_method(meta, method_name);
+                }
+
+                if (!ft_ptr)
                 {
                     std::cerr << "[" << ln << "] Runtime error: no instance method " << method_name << "\n";
                     return RuntimeVal();
                 }
-                FuncT &ft = it->second;
+                FuncT &ft = *ft_ptr;
                 Scope fscope(scope);
-                fscope.set("self", std::move(base_val));
+                fscope.set("self", base_val.clone());
+                // 继续向下传递__super_meta：当前对象的父类
+                fscope.set("__super_meta", RuntimeVal(obj.meta->super_meta));
+
                 size_t argCount = node->children.size() - 1;
                 for (size_t i = 0; i < argCount; i++)
                 {
@@ -671,17 +776,18 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 eval(ft.second, &fscope);
                 return RuntimeVal(std::move(ret_val));
             }
+
             auto *cls_ptr = base_val.as_classmeta();
             if (cls_ptr != nullptr)
             {
                 ClassMeta *cm = cls_ptr->value.get();
-                auto it = cm->static_methods.find(method_name);
-                if (it == cm->static_methods.end())
+                FuncT *ft_ptr = lookup_static_method(cm, method_name);
+                if (!ft_ptr)
                 {
                     std::cerr << "[" << ln << "] Runtime error: no static method " << method_name << " on class\n";
                     return RuntimeVal();
                 }
-                FuncT &ft = it->second;
+                FuncT &ft = *ft_ptr;
                 Scope fscope(scope);
                 size_t argCount = node->children.size() - 1;
                 for (size_t i = 0; i < argCount; i++)
@@ -695,6 +801,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 eval(ft.second, &fscope);
                 return RuntimeVal(std::move(ret_val));
             }
+
             std::cerr << "[" << ln << "] Runtime error: member call requires object/class\n";
             return RuntimeVal();
         }
@@ -703,6 +810,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
             auto meta = std::make_shared<ClassMeta>();
             meta->name = node->val;
             meta->super_class_name = node->val2;
+            meta->super_meta = resolve_superclass(meta->super_class_name, scope, node->line);
             for (auto &child : node->children)
             {
                 if (child->kind != ASTNode::FUNC_DEF)
@@ -745,15 +853,18 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 return RuntimeVal();
             }
             std::shared_ptr<ClassMeta> meta_raw = cls_ptr->value;
-            ObjectInstance obj(std::move(meta_raw), {});
-            RuntimeVal obj_val(std::move(obj));
+            // 在堆上创建实例，使用shared_ptr
+            std::shared_ptr<ObjectInstance> obj_inst_ptr = std::make_shared<ObjectInstance>(meta_raw, std::unordered_map<std::string, RuntimeVal>{});
+            RuntimeVal obj_val(obj_inst_ptr);
 
-            auto it_init = obj_val.as_object()->value.meta->instance_methods.find("init");
-            if (it_init != obj_val.as_object()->value.meta->instance_methods.end())
+            auto it_init = obj_inst_ptr->meta->instance_methods.find("init");
+            if (it_init != obj_inst_ptr->meta->instance_methods.end())
             {
                 FuncT &init_ft = it_init->second;
                 Scope fscope(scope);
-                fscope.set("self", std::move(obj_val));
+                fscope.set("self", obj_val.clone());
+                fscope.set("__super_meta", RuntimeVal(obj_inst_ptr->meta->super_meta));
+
                 for (size_t argi = 0; argi < node->children.size(); argi++)
                 {
                     auto arg = eval(node->children[argi].get(), scope);
@@ -783,29 +894,36 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
         {
             if (node->val == "output")
             {
-                auto arg = eval(node->children[0].get(), scope);
-                if (arg.type() == RtKind::STRING)
+                for (auto &child : node->children)
                 {
-                    std::cout << arg.as_str()->value;
-                }
-                else
-                {
-                    std::cout << arg.to_string();
+                    auto arg = eval(child.get(), scope);
+                    if (arg.type() == RtKind::STRING)
+                    {
+                        std::cout << arg.as_str()->value;
+                    }
+                    else
+                    {
+                        std::cout << arg.to_string();
+                    }
                 }
                 std::cout.flush();
                 return RuntimeVal();
             }
-            if (node->val == "outputln")
+            if (node->val == "outputLine")
             {
-                auto arg = eval(node->children[0].get(), scope);
-                if (arg.type() == RtKind::STRING)
+                for (auto &child : node->children)
                 {
-                    std::cout << arg.as_str()->value << "\n";
+                    auto arg = eval(child.get(), scope);
+                    if (arg.type() == RtKind::STRING)
+                    {
+                        std::cout << arg.as_str()->value;
+                    }
+                    else
+                    {
+                        std::cout << arg.to_string();
+                    }
                 }
-                else
-                {
-                    std::cout << arg.to_string() << "\n";
-                }
+                std::cout << "\n";
                 std::cout.flush();
                 return RuntimeVal();
             }
