@@ -4,7 +4,7 @@ int main(int argc, char *argv[])
 
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter 1.5.2.alpha\n";
+        std::cout << "SandScript interpreter 1.5.3.alpha\n";
         std::cout << "Usage: Sandi.exe script.sand\n";
         std::cout << "Example: Sandi.exe test.sand\n";
         return 1;
@@ -22,7 +22,19 @@ int main(int argc, char *argv[])
 
     auto ast = parse_source(src);
     Interpreter interp;
-    interp.eval(ast.get(), &interp.global);
+    EvalFrame top_frame;
+    try
+    {
+        interp.eval(ast.get(), &interp.global, top_frame);
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "C++ STD EXCEPTION CAUGHT: " << e.what() << "\n";
+    }
+    catch (...)
+    {
+        std::cerr << "UNKNOWN C++ EXCEPTION CAUGHT\n";
+    }
     std::cout << std::flush;
     return 0;
 }

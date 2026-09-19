@@ -28,28 +28,61 @@ auto map_find_const(MapT &m, const typename MapT::key_type &key)
     return m.end();
 }
 
+// 栈帧：控制流信号，每个执行上下文一份
+struct EvalFrame
+{
+    bool has_return = false;
+    RuntimeVal ret_val;
+
+    bool break_flag = false;
+    bool continue_flag = false;
+
+    // 创建全新干净子帧（函数调用使用）
+    EvalFrame make_child() const
+    {
+        EvalFrame cf{};
+        return cf;
+    }
+    // 创建用于表达式求值的临时帧（表达式内部return/break不会向外传播）
+    static EvalFrame make_expr_frame()
+    {
+        EvalFrame ef{};
+        return ef;
+    }
+
+    void reset_control()
+    {
+        has_return = false;
+        ret_val = RuntimeVal();
+        break_flag = false;
+        continue_flag = false;
+    }
+};
+
 struct Interpreter
 {
     Scope global;
-    RuntimeVal ret_val;
-    bool has_return = false;
-    bool break_flag = false;
-    bool continue_flag = false;
+
     FuncT *lookup_instance_method_from(ClassMeta *start_meta, const std::string &name);
     FuncT *lookup_instance_method(ClassMeta *meta, const std::string &name);
     FuncT *lookup_static_method(ClassMeta *meta, const std::string &name);
     std::shared_ptr<ClassMeta> resolve_superclass(const std::string &super_name, Scope *scope, size_t line);
-    RuntimeVal *get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *scope, size_t line);
+
+    // get_lvalue 下标求值使用表达式临时帧
+    RuntimeVal *get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *scope, EvalFrame &expr_frame, size_t line);
+
     void import_file(const std::string &path);
-    RuntimeVal eval(ASTNode *node, Scope *scope);
+
+    // eval: frame为当前**语句块栈帧**；表达式求值内部新建expr‑frame
+    RuntimeVal eval(ASTNode *node, Scope *scope, EvalFrame &frame);
 };
 
-RuntimeVal *Interpreter::get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *scope, size_t line)
+RuntimeVal *Interpreter::get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *scope, EvalFrame &expr_frame, size_t line)
 {
     auto *arr_ptr = root.as_array();
     if (arr_ptr != nullptr)
     {
-        auto idxv = eval(idx_node->children[0].get(), scope);
+        auto idxv = eval(idx_node->children[0].get(), scope, expr_frame);
         auto *num_ptr = idxv.as_num();
         if (!num_ptr)
         {
@@ -69,11 +102,10 @@ RuntimeVal *Interpreter::get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *
         }
         return &arr_ptr->value[i];
     }
-
     auto *dict_ptr = root.as_dict();
     if (dict_ptr != nullptr)
     {
-        auto idxv = eval(idx_node->children[0].get(), scope);
+        auto idxv = eval(idx_node->children[0].get(), scope, expr_frame);
         auto it = map_find_const(dict_ptr->value, idxv);
         if (it == dict_ptr->value.end())
         {
@@ -82,7 +114,6 @@ RuntimeVal *Interpreter::get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *
         }
         return &it->second;
     }
-
     std::cerr << "[" << line << "] Runtime error: cannot index‑assign non‑array/non‑dict\n";
     return nullptr;
 }
@@ -96,7 +127,6 @@ FuncT *Interpreter::lookup_instance_method(ClassMeta *meta, const std::string &n
     {
         return &it->second;
     }
-    // 向父类递归查找
     if (meta->super_meta)
     {
         return lookup_instance_method(meta->super_meta.get(), name);
@@ -166,14 +196,14 @@ void Interpreter::import_file(const std::string &path)
     buf << fin.rdbuf();
     fin.close();
     auto ast = parse_source(buf.str());
-    eval(ast.get(), &global);
+    EvalFrame subframe;
+    eval(ast.get(), &global, subframe);
 }
 
-RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
+RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
 {
-    if (has_return)
-        return RuntimeVal(std::move(ret_val));
-    if (break_flag || continue_flag)
+    // frame：当前**语句块栈帧**；表达式求值一律新建expr‑frame，不在此处短路表达式
+    if (frame.break_flag || frame.continue_flag)
         return RuntimeVal();
 
     size_t ln = node->line;
@@ -186,9 +216,11 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
             RuntimeVal res;
             for (auto &c : node->children)
             {
-                res = eval(c.get(), scope);
-                if (break_flag || continue_flag || has_return)
+                res = eval(c.get(), scope, frame);
+                if (frame.has_return || frame.break_flag || frame.continue_flag)
+                {
                     break;
+                }
             }
             return res;
         }
@@ -219,7 +251,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
         }
         case ASTNode::ASSIGN:
         {
-            auto v = eval(node->children[0].get(), scope);
+            EvalFrame expr_frame = EvalFrame::make_expr_frame();
+            auto v = eval(node->children[0].get(), scope, expr_frame);
             scope->set(node->val, std::move(v));
             return RuntimeVal();
         }
@@ -231,18 +264,25 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 std::cerr << "[" << ln << "] Runtime error: undefined variable: " << node->val << "\n";
                 return RuntimeVal();
             }
-            RuntimeVal *lv = get_lvalue(*base_p, node->children[0].get(), scope, ln);
+            EvalFrame idx_frame = EvalFrame::make_expr_frame();
+            RuntimeVal *lv = get_lvalue(*base_p, node->children[0].get(), scope, idx_frame, ln);
             if (!lv)
                 return RuntimeVal();
-            auto new_val = eval(node->children[1].get(), scope);
+
+            EvalFrame rhs_frame = EvalFrame::make_expr_frame();
+            auto new_val = eval(node->children[1].get(), scope, rhs_frame);
             *lv = std::move(new_val);
             return RuntimeVal();
         }
         case ASTNode::MEMBER_ASSIGN:
         {
-            auto base_val = eval(node->children[0].get(), scope);
+            EvalFrame base_frame = EvalFrame::make_expr_frame();
+            auto base_val = eval(node->children[0].get(), scope, base_frame);
+
+            EvalFrame rhs_frame = EvalFrame::make_expr_frame();
+            auto rhs_val = eval(node->children[1].get(), scope, rhs_frame);
+
             std::string mem_name = node->val;
-            auto rhs_val = eval(node->children[1].get(), scope);
             auto *obj_ptr = base_val.as_object();
             if (obj_ptr != nullptr)
             {
@@ -262,9 +302,15 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 auto &idxNode = node->children[0];
                 auto &rhsNode = node->children[1];
                 auto &baseNode = node->children[2];
-                RuntimeVal base = eval(baseNode.get(), scope);
-                RuntimeVal idxVal = eval(idxNode.get(), scope);
-                RuntimeVal rhsVal = eval(rhsNode.get(), scope);
+
+                EvalFrame b_frame = EvalFrame::make_expr_frame();
+                RuntimeVal base = eval(baseNode.get(), scope, b_frame);
+
+                EvalFrame i_frame = EvalFrame::make_expr_frame();
+                RuntimeVal idxVal = eval(idxNode.get(), scope, i_frame);
+
+                EvalFrame r_frame = EvalFrame::make_expr_frame();
+                RuntimeVal rhsVal = eval(rhsNode.get(), scope, r_frame);
 
                 auto *arr = base.as_array();
                 auto *idxnum = idxVal.as_num();
@@ -307,7 +353,10 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                     std::cerr << "[" << ln << "] undefined var " << varname << "\n";
                     return RuntimeVal();
                 }
-                RuntimeVal rhs = eval(node->children[0].get(), scope);
+
+                EvalFrame rhs_frame = EvalFrame::make_expr_frame();
+                RuntimeVal rhs = eval(node->children[0].get(), scope, rhs_frame);
+
                 auto *pv_num = pv->as_num();
                 auto *rhs_num = rhs.as_num();
                 if (!pv_num || !rhs_num)
@@ -336,8 +385,13 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 std::string op = v.substr(6);
                 auto &idxNode = node->children[0];
                 auto &baseNode = node->children[1];
-                RuntimeVal base = eval(baseNode.get(), scope);
-                RuntimeVal idxVal = eval(idxNode.get(), scope);
+
+                EvalFrame b_frame = EvalFrame::make_expr_frame();
+                RuntimeVal base = eval(baseNode.get(), scope, b_frame);
+
+                EvalFrame i_frame = EvalFrame::make_expr_frame();
+                RuntimeVal idxVal = eval(idxNode.get(), scope, i_frame);
+
                 auto *arr = base.as_array();
                 auto *idxnum = idxVal.as_num();
                 if (!arr || !idxnum)
@@ -384,7 +438,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
         }
         case ASTNode::UNARY:
         {
-            auto sub = eval(node->children[0].get(), scope);
+            EvalFrame sub_frame = EvalFrame::make_expr_frame();
+            auto sub = eval(node->children[0].get(), scope, sub_frame);
             if (node->val == "!")
             {
                 auto *subnum = sub.as_num();
@@ -413,7 +468,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
         {
             if (node->val == "&&")
             {
-                auto lhs = eval(node->children[0].get(), scope);
+                EvalFrame lhs_frame = EvalFrame::make_expr_frame();
+                auto lhs = eval(node->children[0].get(), scope, lhs_frame);
                 auto *lnum = lhs.as_num();
                 if (!lnum)
                 {
@@ -422,7 +478,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 }
                 if (lnum->value == BigDecimal("0"))
                     return RuntimeVal(BigDecimal("0"));
-                auto rhs = eval(node->children[1].get(), scope);
+
+                EvalFrame rhs_frame = EvalFrame::make_expr_frame();
+                auto rhs = eval(node->children[1].get(), scope, rhs_frame);
                 auto *rnum = rhs.as_num();
                 if (!rnum)
                 {
@@ -433,7 +491,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
             }
             if (node->val == "||")
             {
-                auto lhs = eval(node->children[0].get(), scope);
+                EvalFrame lhs_frame = EvalFrame::make_expr_frame();
+                auto lhs = eval(node->children[0].get(), scope, lhs_frame);
                 auto *lnum = lhs.as_num();
                 if (!lnum)
                 {
@@ -442,7 +501,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 }
                 if (!(lnum->value == BigDecimal("0")))
                     return RuntimeVal(BigDecimal("1"));
-                auto rhs = eval(node->children[1].get(), scope);
+
+                EvalFrame rhs_frame = EvalFrame::make_expr_frame();
+                auto rhs = eval(node->children[1].get(), scope, rhs_frame);
                 auto *rnum = rhs.as_num();
                 if (!rnum)
                 {
@@ -452,8 +513,12 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 return RuntimeVal((rnum->value == BigDecimal("0")) ? BigDecimal("0") : BigDecimal("1"));
             }
 
-            auto lhs = eval(node->children[0].get(), scope);
-            auto rhs = eval(node->children[1].get(), scope);
+            EvalFrame lhs_frame = EvalFrame::make_expr_frame();
+            auto lhs = eval(node->children[0].get(), scope, lhs_frame);
+
+            EvalFrame rhs_frame = EvalFrame::make_expr_frame();
+            auto rhs = eval(node->children[1].get(), scope, rhs_frame);
+
             auto *lnum = lhs.as_num();
             auto *rnum = rhs.as_num();
             if (lnum && rnum)
@@ -495,7 +560,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
         }
         case ASTNode::IF:
         {
-            auto cond = eval(node->children[0].get(), scope);
+            // IF条件是表达式，使用expr‑frame
+            EvalFrame cond_frame = EvalFrame::make_expr_frame();
+            auto cond = eval(node->children[0].get(), scope, cond_frame);
             auto *condnum = cond.as_num();
             if (!condnum)
             {
@@ -504,11 +571,11 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
             }
             if (!(condnum->value == BigDecimal("0")))
             {
-                eval(node->children[1].get(), scope);
+                eval(node->children[1].get(), scope, frame);
             }
             else if (node->children.size() >= 3)
             {
-                eval(node->children[2].get(), scope);
+                eval(node->children[2].get(), scope, frame);
             }
             return RuntimeVal();
         }
@@ -516,7 +583,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
         {
             for (;;)
             {
-                auto cond = eval(node->children[0].get(), scope);
+                // while条件：表达式临时帧
+                EvalFrame cond_frame = EvalFrame::make_expr_frame();
+                auto cond = eval(node->children[0].get(), scope, cond_frame);
                 auto *condnum = cond.as_num();
                 if (!condnum)
                 {
@@ -525,25 +594,31 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 }
                 if (condnum->value == BigDecimal("0"))
                     break;
-                eval(node->children[1].get(), scope);
-                if (has_return)
-                    break;
-                if (break_flag)
+
+                eval(node->children[1].get(), scope, frame);
+
+                if (frame.break_flag)
                 {
-                    break_flag = false;
+                    frame.break_flag = false;
                     break;
                 }
-                if (continue_flag)
+                if (frame.continue_flag)
                 {
-                    continue_flag = false;
+                    frame.continue_flag = false;
                     continue;
+                }
+                if (frame.has_return)
+                {
+                    break;
                 }
             }
             return RuntimeVal();
         }
         case ASTNode::FOR_IN:
         {
-            auto seq_val = eval(node->children[0].get(), scope);
+            // for‑in序列求值：表达式帧
+            EvalFrame seq_frame = EvalFrame::make_expr_frame();
+            auto seq_val = eval(node->children[0].get(), scope, seq_frame);
             auto *arrptr = seq_val.as_array();
             if (!arrptr)
             {
@@ -555,32 +630,37 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
             {
                 Scope blk_scope(scope);
                 blk_scope.set(node->val, arr[idx].clone());
-
-                eval(node->children[1].get(), &blk_scope);
+                eval(node->children[1].get(), &blk_scope, frame);
                 auto *modified = blk_scope.get(node->val);
                 if (modified != nullptr)
                 {
                     arr[idx] = std::move(*modified);
                 }
-                if (has_return)
-                    break;
-                if (break_flag)
+                if (frame.break_flag)
                 {
-                    break_flag = false;
+                    frame.break_flag = false;
                     break;
                 }
-                if (continue_flag)
+                if (frame.continue_flag)
                 {
-                    continue_flag = false;
+                    frame.continue_flag = false;
                     continue;
+                }
+                if (frame.has_return)
+                {
+                    break;
                 }
             }
             return RuntimeVal();
         }
         case ASTNode::RANGE:
         {
-            auto s = eval(node->children[0].get(), scope);
-            auto e = eval(node->children[1].get(), scope);
+            EvalFrame s_frame = EvalFrame::make_expr_frame();
+            auto s = eval(node->children[0].get(), scope, s_frame);
+
+            EvalFrame e_frame = EvalFrame::make_expr_frame();
+            auto e = eval(node->children[1].get(), scope, e_frame);
+
             auto *s_num = s.as_num();
             auto *e_num = e.as_num();
             if (!s_num || !e_num)
@@ -593,7 +673,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
             BigDecimal step("1");
             if (node->children.size() >= 3)
             {
-                auto st = eval(node->children[2].get(), scope);
+                EvalFrame st_frame = EvalFrame::make_expr_frame();
+                auto st = eval(node->children[2].get(), scope, st_frame);
                 auto *st_num = st.as_num();
                 if (!st_num)
                 {
@@ -615,7 +696,10 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
         {
             Array arr;
             for (auto &c : node->children)
-                arr.push_back(eval(c.get(), scope));
+            {
+                EvalFrame elem_frame = EvalFrame::make_expr_frame();
+                arr.push_back(eval(c.get(), scope, elem_frame));
+            }
             return RuntimeVal(std::move(arr));
         }
         case ASTNode::DICT_LIT:
@@ -623,8 +707,12 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
             Dict d;
             for (size_t i = 0; i < node->children.size(); i += 2)
             {
-                auto k = eval(node->children[i].get(), scope);
-                auto v = eval(node->children[i + 1].get(), scope);
+                EvalFrame k_frame = EvalFrame::make_expr_frame();
+                auto k = eval(node->children[i].get(), scope, k_frame);
+
+                EvalFrame v_frame = EvalFrame::make_expr_frame();
+                auto v = eval(node->children[i + 1].get(), scope, v_frame);
+
                 auto *k_arr = k.as_array();
                 auto *k_dict = k.as_dict();
                 if (k_arr || k_dict)
@@ -639,8 +727,11 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
         case ASTNode::INDEX:
         {
             auto base_p = scope->get(node->val);
-            auto base = RuntimeVal(std::move(*base_p));
-            auto idxv = eval(node->children[0].get(), scope);
+            auto base = base_p->clone();
+
+            EvalFrame idx_frame = EvalFrame::make_expr_frame();
+            auto idxv = eval(node->children[0].get(), scope, idx_frame);
+
             auto *arrptr = base.as_array();
             if (arrptr)
             {
@@ -679,7 +770,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
         }
         case ASTNode::MEMBER_ACCESS:
         {
-            auto base_val = eval(node->children[0].get(), scope);
+            EvalFrame base_frame = EvalFrame::make_expr_frame();
+            auto base_val = eval(node->children[0].get(), scope, base_frame);
             std::string mem = node->val;
             auto *obj_ptr = base_val.as_object();
             if (obj_ptr != nullptr)
@@ -717,7 +809,6 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
             if (node->children[0]->kind == ASTNode::VAR && node->children[0]->val == "super")
             {
                 is_super_call = true;
-                // super不eval VAR("super")，直接从scope拿__super_meta和self
                 auto p_super_meta = scope->get("__super_meta");
                 auto p_self = scope->get("self");
                 if (!p_super_meta || p_super_meta->as_classmeta() == nullptr || !p_self)
@@ -726,15 +817,13 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                     return RuntimeVal();
                 }
                 super_lookup_meta = p_super_meta->as_classmeta()->value;
-                base_val = p_self->clone(); // super的base就是当前self对象
+                base_val = p_self->clone();
             }
             else
             {
-                // 普通对象，正常eval base
-                base_val = eval(node->children[0].get(), scope);
+                EvalFrame base_frame = EvalFrame::make_expr_frame();
+                base_val = eval(node->children[0].get(), scope, base_frame);
             }
-            // =====================================================
-
             auto *obj_ptr = base_val.as_object();
             if (obj_ptr != nullptr)
             {
@@ -749,7 +838,6 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 {
                     ft_ptr = lookup_instance_method(meta, method_name);
                 }
-
                 if (!ft_ptr)
                 {
                     std::cerr << "[" << ln << "] Runtime error: no instance method " << method_name << "\n";
@@ -758,25 +846,22 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 FuncT &ft = *ft_ptr;
                 Scope fscope(scope);
                 fscope.set("self", base_val.clone());
-                // 继续向下传递__super_meta：当前对象的父类
                 fscope.set("__super_meta", RuntimeVal(obj.meta->super_meta));
-
                 size_t argCount = node->children.size() - 1;
                 for (size_t i = 0; i < argCount; i++)
                 {
-                    auto arg = eval(node->children[i + 1].get(), scope);
+                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                    auto arg = eval(node->children[i + 1].get(), scope, arg_frame);
                     size_t paramIdx = i + 1;
                     if (paramIdx < ft.first.size())
                     {
                         fscope.set(ft.first[paramIdx], std::move(arg));
                     }
                 }
-                has_return = false;
-                ret_val = RuntimeVal();
-                eval(ft.second, &fscope);
-                return RuntimeVal(std::move(ret_val));
+                EvalFrame child_frame = frame.make_child();
+                eval(ft.second, &fscope, child_frame);
+                return RuntimeVal(std::move(child_frame.ret_val));
             }
-
             auto *cls_ptr = base_val.as_classmeta();
             if (cls_ptr != nullptr)
             {
@@ -792,16 +877,15 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 size_t argCount = node->children.size() - 1;
                 for (size_t i = 0; i < argCount; i++)
                 {
-                    auto arg = eval(node->children[i + 1].get(), scope);
+                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                    auto arg = eval(node->children[i + 1].get(), scope, arg_frame);
                     if (i < ft.first.size())
                         fscope.set(ft.first[i], std::move(arg));
                 }
-                has_return = false;
-                ret_val = RuntimeVal();
-                eval(ft.second, &fscope);
-                return RuntimeVal(std::move(ret_val));
+                EvalFrame child_frame = frame.make_child();
+                eval(ft.second, &fscope, child_frame);
+                return RuntimeVal(std::move(child_frame.ret_val));
             }
-
             std::cerr << "[" << ln << "] Runtime error: member call requires object/class\n";
             return RuntimeVal();
         }
@@ -853,10 +937,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 return RuntimeVal();
             }
             std::shared_ptr<ClassMeta> meta_raw = cls_ptr->value;
-            // 在堆上创建实例，使用shared_ptr
             std::shared_ptr<ObjectInstance> obj_inst_ptr = std::make_shared<ObjectInstance>(meta_raw, std::unordered_map<std::string, RuntimeVal>{});
             RuntimeVal obj_val(obj_inst_ptr);
-
             auto it_init = obj_inst_ptr->meta->instance_methods.find("init");
             if (it_init != obj_inst_ptr->meta->instance_methods.end())
             {
@@ -864,19 +946,18 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 Scope fscope(scope);
                 fscope.set("self", obj_val.clone());
                 fscope.set("__super_meta", RuntimeVal(obj_inst_ptr->meta->super_meta));
-
                 for (size_t argi = 0; argi < node->children.size(); argi++)
                 {
-                    auto arg = eval(node->children[argi].get(), scope);
+                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                    auto arg = eval(node->children[argi].get(), scope, arg_frame);
                     size_t param_idx = argi + 1;
                     if (param_idx < init_ft.first.size())
                     {
                         fscope.set(init_ft.first[param_idx], std::move(arg));
                     }
                 }
-                has_return = false;
-                ret_val = RuntimeVal();
-                eval(init_ft.second, &fscope);
+                EvalFrame subframe = frame.make_child();
+                eval(init_ft.second, &fscope, subframe);
             }
             return obj_val;
         }
@@ -892,11 +973,14 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
         }
         case ASTNode::CALL:
         {
+            size_t ln = node->line;
+            // 内置函数
             if (node->val == "output")
             {
                 for (auto &child : node->children)
                 {
-                    auto arg = eval(child.get(), scope);
+                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                    auto arg = eval(child.get(), scope, arg_frame);
                     if (arg.type() == RtKind::STRING)
                     {
                         std::cout << arg.as_str()->value;
@@ -913,7 +997,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
             {
                 for (auto &child : node->children)
                 {
-                    auto arg = eval(child.get(), scope);
+                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                    auto arg = eval(child.get(), scope, arg_frame);
                     if (arg.type() == RtKind::STRING)
                     {
                         std::cout << arg.as_str()->value;
@@ -929,7 +1014,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
             }
             if (node->val == "prminput")
             {
-                auto arg = eval(node->children[0].get(), scope);
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                auto arg = eval(node->children[0].get(), scope, arg_frame);
                 if (arg.type() == RtKind::STRING)
                 {
                     std::cout << arg.as_str()->value;
@@ -968,7 +1054,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                     std::cerr << "[" << ln << "] Runtime error: tonum() expects exactly one argument\n";
                     return RuntimeVal();
                 }
-                auto arg = eval(node->children[0].get(), scope);
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                auto arg = eval(node->children[0].get(), scope, arg_frame);
                 auto *sptr = arg.as_str();
                 if (!sptr)
                 {
@@ -994,7 +1081,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                     std::cerr << "[" << ln << "] Runtime error: tostring() expects exactly one argument\n";
                     return RuntimeVal();
                 }
-                auto arg = eval(node->children[0].get(), scope);
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                auto arg = eval(node->children[0].get(), scope, arg_frame);
                 return RuntimeVal(arg.to_string());
             }
             if (node->val == "time")
@@ -1026,7 +1114,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                     std::cerr << "[" << ln << "] Runtime error: sleep() expects 1 argument(ms)\n";
                     return RuntimeVal();
                 }
-                auto arg = eval(node->children[0].get(), scope);
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                auto arg = eval(node->children[0].get(), scope, arg_frame);
                 auto *numptr = arg.as_num();
                 if (!numptr)
                 {
@@ -1043,13 +1132,15 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 return RuntimeVal();
             }
 
-            auto fv = RuntimeVal(std::move(*scope->get(node->val)));
+            // 用户自定义函数调用
+            auto fv = scope->get(node->val)->clone();
             auto *fptr = fv.as_func();
             if (!fptr)
             {
                 std::cerr << "[" << ln << "] Runtime error: not a function\n";
                 return RuntimeVal();
             }
+
             Scope fscope(scope);
             auto &params = fptr->value.first;
             auto *func_body = fptr->value.second;
@@ -1072,7 +1163,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 }
                 for (size_t i = 0; i < params.size(); i++)
                 {
-                    auto arg = eval(node->children[i].get(), scope);
+                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                    auto arg = eval(node->children[i].get(), scope, arg_frame);
                     fscope.set(params[i], std::move(arg));
                 }
             }
@@ -1082,7 +1174,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 Array restArr;
                 for (size_t i = 0; i < argCount; i++)
                 {
-                    auto arg = eval(node->children[i].get(), scope);
+                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                    auto arg = eval(node->children[i].get(), scope, arg_frame);
                     if (i < fixedCnt)
                     {
                         fscope.set(params[i], std::move(arg));
@@ -1099,22 +1192,25 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope)
                 std::string restName = params[variadicIndex].substr(3);
                 fscope.set(restName, RuntimeVal(std::move(restArr)));
             }
-            has_return = false;
-            ret_val = RuntimeVal();
-            eval(func_body, &fscope);
-            return RuntimeVal(std::move(ret_val));
+
+            // 创建函数独立子栈帧
+            EvalFrame child_frame = frame.make_child();
+            eval(func_body, &fscope, child_frame);
+            return RuntimeVal(std::move(child_frame.ret_val));
         }
         case ASTNode::RETURN:
         {
-            ret_val = eval(node->children[0].get(), scope);
-            has_return = true;
-            return RuntimeVal(std::move(ret_val));
+            // return 后面的表达式求值：使用表达式临时帧
+            EvalFrame expr_frame = EvalFrame::make_expr_frame();
+            frame.ret_val = eval(node->children[0].get(), scope, expr_frame);
+            frame.has_return = true;
+            return RuntimeVal(std::move(frame.ret_val));
         }
         case ASTNode::BREAK:
-            break_flag = true;
+            frame.break_flag = true;
             return RuntimeVal();
         case ASTNode::CONTINUE:
-            continue_flag = true;
+            frame.continue_flag = true;
             return RuntimeVal();
         default:
             std::cerr << "[" << ln << "] Runtime error: unknown AST node\n";
