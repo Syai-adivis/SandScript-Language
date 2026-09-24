@@ -33,11 +33,11 @@ int main(int argc, char *argv[])
     }
     catch (const std::exception &e)
     {
-        std::cerr << "C++ STD EXCEPTION CAUGHT: " << e.what() << "\n";
+        std::cerr << "EXCEPTION CAUGHT: " << e.what() << "\n";
     }
     catch (...)
     {
-        std::cerr << "UNKNOWN C++ EXCEPTION CAUGHT\n";
+        std::cerr << "UNKNOWN EXCEPTION CAUGHT\n";
     }
     std::cout << std::flush;
     return 0;
