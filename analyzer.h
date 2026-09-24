@@ -723,7 +723,14 @@ std::unique_ptr<ASTNode> Parser::parse_if()
     if (tok.type == T_ELSE)
     {
         next_tok();
-        node->children.push_back(parse_block());
+        if (tok.type == T_IF)
+        {
+            node->children.push_back(parse_if());
+        }
+        else
+        {
+            node->children.push_back(parse_block());
+        }
     }
     return node;
 }
