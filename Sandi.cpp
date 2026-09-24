@@ -64,7 +64,7 @@ stmt           ::= if_stmt
                  | member_assign_stmt
                  | expr_stmt ;
 
-if_stmt        ::= "if" "(" expr ")" stmt [ "else" stmt ] ;
+if_stmt        ::= "if" "(" expr ")" block [ "else" if_stmt|block ] ;
 while_stmt     ::= "while" "(" expr ")" block ;
 for_in_stmt    ::= "for" IDENT "in" expr block ;
 
