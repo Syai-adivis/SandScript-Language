@@ -14,6 +14,7 @@ func fib_iter(n) begin
     return b;
 end
 t1=time_ms();
-fib_iter(5);
+sum=fib_iter(5);
 t2=time_ms();
 outputLine("Execution time: ", t2-t1);
+outputLine("Result:",sum);

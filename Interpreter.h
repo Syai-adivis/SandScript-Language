@@ -609,6 +609,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 }
                 if (frame.has_return)
                 {
+                    return RuntimeVal();
                     break;
                 }
             }
@@ -648,6 +649,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 }
                 if (frame.has_return)
                 {
+                    return RuntimeVal();
                     break;
                 }
             }
@@ -1204,7 +1206,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             EvalFrame expr_frame = EvalFrame::make_expr_frame();
             frame.ret_val = eval(node->children[0].get(), scope, expr_frame);
             frame.has_return = true;
-            return RuntimeVal(std::move(frame.ret_val));
+            return frame.ret_val.clone();
         }
         case ASTNode::BREAK:
             frame.break_flag = true;
