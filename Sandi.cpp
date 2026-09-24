@@ -9,6 +9,10 @@ int main(int argc, char *argv[])
         std::cout << "Example: Sandi.exe test.sand\n";
         return 1;
     }
+    if (argv[1] == "--version")
+    {
+        std::cout << "1.5.3.alpha\n";
+    }
     std::ifstream fin(argv[1]);
     if (!fin.is_open())
     {
