@@ -1,0 +1,10 @@
+
+*.exe
+*.obj
+*.o
+*.vsix
+
+old_v/
+
+*.tmp
+*.log
