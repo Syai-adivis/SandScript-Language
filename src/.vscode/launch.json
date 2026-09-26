@@ -7,7 +7,7 @@
             "request": "launch",
             "program": "${fileDirname}\\${fileBasenameNoExtension}.exe", // 要调试的exe路径，和tasks.json输出一致
             "args": [
-                "--help"
+                "test.sand"
             ], // 程序运行时的命令行参数，无则留空
             "stopAtEntry": false, // 是否在程序入口处暂停（main函数第一行），新手可设为true
             "cwd": "${fileDirname}", // 工作目录（程序运行的目录）

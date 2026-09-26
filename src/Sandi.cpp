@@ -1,16 +1,17 @@
 #include "Interpreter.h"
+#include "prepross.h"
 int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter 1.6.beta\n";
+        std::cout << "SandScript interpreter 1.8.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         return 0;
     }
     if (std::string(argv[1]) == "--version")
     {
-        std::cout << "1.6.beta\n";
+        std::cout << "1.8.beta\n";
         return 0;
     }
     if (std::string(argv[1]) == "--copyright")
@@ -247,7 +248,7 @@ limitations under the License.
     }
     if (std::string(argv[1]) == "--help")
     {
-        std::cout << "SandScript interpreter 1.6.beta\n";
+        std::cout << "SandScript interpreter 1.8.beta\n";
         std::cout << "Usage: Sandi.exe script.sand\n";
         std::cout << "Example: Sandi.exe test.sand\n";
         std::string help = R"XXX(
@@ -352,8 +353,12 @@ non_ascii      ::= #x80 ... #xFFFF ;
     }
     std::stringstream buffer;
     buffer << fin.rdbuf();
-    std::string src = buffer.str();
+    std::string rsrc = buffer.str();
     fin.close();
+
+    namespace fs = std::filesystem;
+    fs::path exePath = fs::absolute(argv[0]);
+    std::string src = preprocess_source(rsrc, exePath);
 
     auto ast = parse_source(src);
     Interpreter interp;
