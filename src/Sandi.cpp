@@ -3,14 +3,14 @@ int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter 1.5.3.alpha\n";
-        std::cout << "Usage: Sandi.exe script.sand\n";
-        std::cout << "Example: Sandi.exe test.sand\n";
+        std::cout << "SandScript interpreter 1.6.beta\n";
+        std::cout << "Usage: Sandi script.sand\n";
+        std::cout << "Example: Sandi test.sand\n";
         return 0;
     }
     if (std::string(argv[1]) == "--version")
     {
-        std::cout << "1.5.3.alpha\n";
+        std::cout << "1.6.beta\n";
         return 0;
     }
     if (std::string(argv[1]) == "--copyright")
@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
     }
     if (std::string(argv[1]) == "--help")
     {
-        std::cout << "SandScript interpreter 1.5.3.alpha\n";
+        std::cout << "SandScript interpreter 1.6.beta\n";
         std::cout << "Usage: Sandi.exe script.sand\n";
         std::cout << "Example: Sandi.exe test.sand\n";
         std::string help = R"XXX(
