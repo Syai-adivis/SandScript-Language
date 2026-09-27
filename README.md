@@ -1,5 +1,5 @@
 
-# Sandi Language
+# SandScript Language
 
 **SandScript** is a modern Interpreted programming language.
 
