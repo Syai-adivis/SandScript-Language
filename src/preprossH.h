@@ -30,7 +30,7 @@ struct PreProcContext
     std::stack<CondFrame> condStack;        // 条件编译栈
     std::stack<std::string> classStack;     // 当前正在解析的类名栈，用于#private
     bool skipOutput = false;                // 全局是否跳过输出（条件编译关闭时）
-
+    std::stack<std::unordered_set<std::string>> classPrivateSetStack;
     // 查找#define宏
     DefineMacro* findDefine(const std::string& name)
     {
@@ -43,6 +43,11 @@ struct PreProcContext
     bool isDefined(const std::string& name)
     {
         return findDefine(name) != nullptr || inlineSymbols.count(name);
+    }
+    bool isCurrentClassPrivateIdent(const std::string& ident) const
+    {
+        if(classPrivateSetStack.empty()) return false;
+        return classPrivateSetStack.top().count(ident) > 0;
     }
 };
 
@@ -71,5 +76,5 @@ std::string ltrim(const std::string &s);
 std::string strip_hash_directive(const std::string& line);
 // 工具：替换#private伪私有字段：在类内，标识符name → __ClassName__name
 std::string rewrite_private_ident(PreProcContext& ctx, const std::string& ident);
-
+std::string rewrite_private_in_line(PreProcContext& ctx, const std::string& line);
 #endif

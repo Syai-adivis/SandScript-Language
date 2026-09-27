@@ -65,7 +65,8 @@ PreProcLineResult preproc_handle_line(const std::string& line, PreProcContext& c
         if(!ctx.skipOutput)
         {
             std::string expanded = expand_macros_in_line(ctx, line);
-            res.outLine = expanded + "\n";
+            std::string priv_rewritten = rewrite_private_in_line(ctx, expanded);
+            res.outLine = priv_rewritten + "\n";
         }
         return res;
     }
@@ -108,12 +109,20 @@ PreProcLineResult preproc_handle_line(const std::string& line, PreProcContext& c
     if(cmd == "private")
     {
         if(ctx.skipOutput) return res;
+            if(ctx.classPrivateSetStack.empty())
+        {
+            std::cerr << "[Preproc] error: #private must be used inside class begin ... end\n";
+            return res;
+        }
         std::string rest;
         std::getline(iss, rest);
         std::string trimmed = ltrim(rest);
         if(!trimmed.empty() && trimmed.back() == ';') trimmed.pop_back();
         trimmed = ltrim(trimmed);
         std::string outStmt;
+
+        auto& privSet = ctx.classPrivateSetStack.top();
+
         size_t p=0;
         while(p < trimmed.size())
         {
@@ -131,8 +140,11 @@ PreProcLineResult preproc_handle_line(const std::string& line, PreProcContext& c
             }
             var = ltrim(var);
             if(var.empty()) continue;
+            privSet.insert(var);
+
+            std::string rewritten = rewrite_private_ident(ctx, var);
             if(!outStmt.empty()) outStmt += ",";
-            outStmt += rewrite_private_ident(ctx, var);
+            outStmt += rewritten;
         }
         res.outLine = outStmt + ";\n";
         return res;
@@ -296,7 +308,6 @@ void preproc_include_file(PreProcContext& ctx, const fs::path& baseDir, const st
     std::string key = absPath.string();
     if(ctx.included.count(key)) return;
     ctx.included.insert(key);
-
     std::ifstream fin(absPath);
     if(!fin.is_open())
     {
@@ -307,6 +318,12 @@ void preproc_include_file(PreProcContext& ctx, const fs::path& baseDir, const st
     buf << fin.rdbuf();
     fin.close();
     std::string fileContent = buf.str();
+    PreProcContext subCtx;
+    subCtx.exeDir = ctx.exeDir;
+    subCtx.included = ctx.included;       
+    subCtx.defines = ctx.defines;         
+    subCtx.inlineSymbols = ctx.inlineSymbols;
+    subCtx.skipOutput = false;
 
     std::istringstream iss(fileContent);
     std::string line;
@@ -326,14 +343,112 @@ void preproc_include_file(PreProcContext& ctx, const fs::path& baseDir, const st
             curDef->text += line + "\n";
             continue;
         }
-        auto lr = preproc_handle_line(line, ctx);
+        auto lr = preproc_handle_line(line, subCtx);
         if(lr.consumeRestOfInput)
         {
             collectDefine = true;
-            curDef = &ctx.defines.back();
+            curDef = &subCtx.defines.back();
         }
         outSource += lr.outLine;
     }
+    ctx.defines.swap(subCtx.defines);
+    ctx.inlineSymbols.swap(subCtx.inlineSymbols);
+}
+
+
+static bool is_id_start(char c)
+{
+    return std::isalpha(static_cast<unsigned char>(c)) || c == '_' || static_cast<unsigned char>(c) > 0x7F;
+}
+static bool is_id_cont(char c)
+{
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || static_cast<unsigned char>(c) > 0x7F;
+}
+
+std::string rewrite_private_in_line(PreProcContext& ctx, const std::string& line)
+{
+    if(ctx.classPrivateSetStack.empty())
+        return line;
+    const auto& privSet = ctx.classPrivateSetStack.top();
+    if(privSet.empty())
+        return line;
+
+    std::string out;
+    size_t i = 0;
+    const size_t n = line.size();
+    bool in_string = false;
+    char string_quote = 0;
+    bool in_line_comment = false;
+
+    while(i < n)
+    {
+        char ch = line[i];
+        if(in_line_comment)
+        {
+            out.push_back(ch);
+            i++;
+            continue;
+        }
+        if(in_string)
+        {
+            // 字符串内，处理转义
+            if(ch == '\\' && i+1 < n)
+            {
+                out.push_back(ch);
+                out.push_back(line[i+1]);
+                i +=2;
+                continue;
+            }
+            if(ch == string_quote)
+            {
+                in_string = false;
+            }
+            out.push_back(ch);
+            i++;
+            continue;
+        }
+        // 检测字符串开始
+        if(ch == '"')
+        {
+            in_string = true;
+            string_quote = '"';
+            out.push_back(ch);
+            i++;
+            continue;
+        }
+        // 检测 // 注释
+        if(ch == '/' && i+1 < n && line[i+1] == '/')
+        {
+            in_line_comment = true;
+            out.push_back(ch);
+            i++;
+            continue;
+        }
+        // 识别标识符
+        if(is_id_start(static_cast<unsigned char>(ch)))
+        {
+            size_t start = i;
+            while(i < n && is_id_cont(static_cast<unsigned char>(line[i])))
+            {
+                i++;
+            }
+            std::string ident = line.substr(start, i - start);
+            if(privSet.count(ident))
+            {
+                // 需要重写私有字段
+                out += rewrite_private_ident(ctx, ident);
+            }
+            else
+            {
+                out += ident;
+            }
+            continue;
+        }
+        // 普通字符直接复制
+        out.push_back(ch);
+        i++;
+    }
+    return out;
 }
 
 std::string preprocess_source(const std::string& rawSource, const fs::path& exePath)
@@ -351,7 +466,6 @@ std::string preprocess_source(const std::string& rawSource, const fs::path& exeP
     while(std::getline(iss, line))
     {
         std::string lt = ltrim(line);
-        // 简单类栈跟踪，用于#private
         if(starts_with(lt,"class "))
         {
             size_t sp = lt.find(' ');
@@ -359,12 +473,16 @@ std::string preprocess_source(const std::string& rawSource, const fs::path& exeP
             std::string clsName = lt.substr(sp+1, bpos - sp -1);
             clsName = ltrim(clsName);
             ctx.classStack.push(clsName);
+            ctx.classPrivateSetStack.push(std::unordered_set<std::string>{}); 
         }
         if(lt == "end")
         {
-            if(!ctx.classStack.empty()) ctx.classStack.pop();
+            if(!ctx.classStack.empty())
+            {       
+                ctx.classStack.pop();
+                ctx.classPrivateSetStack.pop(); 
+            }
         }
-
         if(collectDefine)
         {
             std::string hb = strip_hash_directive(line);
