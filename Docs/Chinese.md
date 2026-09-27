@@ -320,7 +320,7 @@ s.show();
 > `super`只能在实例方法内部使用，用于调用父类的实例方法。
 
 ### #private伪私有（预处理器）
-类内部写`#private a,b;`，预处理器自动把标识符重命名为`__ClassName__a`，实现简单私有变量，外部无法直接访问。
+类内部写`#private a,b...;`，预处理器自动把标识符重命名为`__ClassName__a`，实现简单私有变量，外部无法直接访问。
 ```sand
 class A
 begin
@@ -344,6 +344,7 @@ end
 |`time()`|返回当前系统时间戳（秒，数字）|
 |`time_ms()`|毫秒级时间戳|
 |`sleep(ms)`|休眠指定毫秒数|
+|`args()`|命令行参数|
 
 > 没有内置数组push、length，需要自己封装函数实现。
 
@@ -390,7 +391,7 @@ output("release");
 ```
 支持`#elif SYMBOL`。
 
-### `#private var1,var2;`
+### `#private var1,var2...;`
 类内伪私有，预处理器改名。
 
 > 预处理器只做文本替换，不做语法检查。
@@ -439,12 +440,12 @@ expr_stmt      ::= expr ";" ;
 block          ::= "begin" { stmt } "end" ;
 
 expr           ::= logic_or ;
-logic_or       ::= logic_and { "||" logic_and } ;
-logic_and      ::= compare { "&&" compare } ;
+logic_or       ::= logic_and { "||"|"or" logic_and } ;
+logic_and      ::= compare { "&&"|"and" compare } ;
 compare        ::= add { ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) add } ;
 add            ::= mul { ( "+" | "-" ) mul } ;
 mul            ::= unary { ( "*" | "/" ) unary } ;
-unary          ::= ( "-" | "!" ) unary | primary ;
+unary          ::= ( "-" | "!" |"not") unary | primary ;
 
 primary        ::= NUM
                  | STR

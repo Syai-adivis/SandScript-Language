@@ -324,7 +324,7 @@ s.show();
 > `super` can **only** be used inside instance methods; forbidden in static methods or global scope.
 
 ### Preprocessor pseudo‑private `#private`
-Inside a class block use `#private var1,var2;`. The preprocessor renames identifiers to `__ClassName__varName` to simulate private members which cannot be accessed externally.
+Inside a class block use `#private var1,var2...;`. The preprocessor renames identifiers to `__ClassName__varName` to simulate private members which cannot be accessed externally.
 ```sand
 class A
 begin
@@ -348,8 +348,9 @@ end
 | `time()` | Return UNIX timestamp in seconds as number |
 | `time_ms()` | Return timestamp in milliseconds |
 | `sleep(ms)` | Suspend execution for given milliseconds |
+| `args()` | CLI argumment (string array) |
 
-> There are no built‑in array length / push functions; implement them with user‑defined functions.
+> There are no built‑in array length / push functions now; implement them with user‑defined functions.
 
 ## 10 Preprocessor Directives (lines starting with `#`)
 Preprocessing runs **before lexing / parsing**. It handles text‑level macro substitution, file inclusion, conditional compilation and private‑member renaming.
@@ -394,7 +395,7 @@ output("release");
 ```
 `#elif SYMBOL` is also supported.
 
-### `#private var1,var2;`
+### `#private var1,var2...;`
 Pseudo‑private variable renaming inside class blocks.
 
 > Preprocessor performs raw text substitution; it does **not** validate syntax.
@@ -443,12 +444,12 @@ expr_stmt      ::= expr ";" ;
 block          ::= "begin" { stmt } "end" ;
 
 expr           ::= logic_or ;
-logic_or       ::= logic_and { "||" logic_and } ;
-logic_and      ::= compare { "&&" compare } ;
+logic_or       ::= logic_and { "||"|"or" logic_and } ;
+logic_and      ::= compare { "&&"|"and" compare } ;
 compare        ::= add { ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) add } ;
 add            ::= mul { ( "+" | "-" ) mul } ;
 mul            ::= unary { ( "*" | "/" ) unary } ;
-unary          ::= ( "-" | "!" ) unary | primary ;
+unary          ::= ( "-" | "!" | "not") unary | primary ;
 
 primary        ::= NUM
                  | STR

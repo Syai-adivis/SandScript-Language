@@ -303,12 +303,12 @@ block          ::= "begin" { stmt } "end" ;
 
 (* Expression, precedence: low -> high *)
 expr           ::= logic_or ;
-logic_or       ::= logic_and { "||" logic_and } ;
-logic_and      ::= compare { "&&" compare } ;
+logic_or       ::= logic_and { "||"|"or" logic_and } ;
+logic_and      ::= compare { "&&"|"and" compare } ;
 compare        ::= add { ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) add } ;
 add            ::= mul { ( "+" | "-" ) mul } ;
 mul            ::= unary { ( "*" | "/" ) unary } ;
-unary          ::= ( "-" | "!" ) unary | primary ;
+unary          ::= ( "-" | "!"|"not" ) unary | primary ;
 
 primary        ::= NUM
                  | STR
@@ -339,7 +339,7 @@ letter         ::= "a"..."z" | "A"..."Z" ;
 digit          ::= "0"..."9" ;
 non_ascii      ::= #x80 ... #xFFFF ;
 
-(* Keywords: if,else,while,for,in,func,return,break,continue,output,input,range,from,import,class,static,new,super,begin,end *)
+(* Keywords: if,else,while,for,in,func,return,break,continue,output,input,range,from,import,class,static,new,super,begin,end,and,or,not *)
 (* Operators: ++,--,+=,-=,*=,/=,+,-,*,/,==,!=,<,>,<=,>=,&&,||,!,=,.,... *)
 (* Punctuation: ( ) [ ] { } , : ; *)
         )XXX";
