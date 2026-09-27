@@ -391,7 +391,7 @@ std::string rewrite_private_in_line(PreProcContext& ctx, const std::string& line
         }
         if(in_string)
         {
-            // 字符串内，处理转义
+            
             if(ch == '\\' && i+1 < n)
             {
                 out.push_back(ch);
@@ -407,7 +407,7 @@ std::string rewrite_private_in_line(PreProcContext& ctx, const std::string& line
             i++;
             continue;
         }
-        // 检测字符串开始
+      
         if(ch == '"')
         {
             in_string = true;
@@ -416,7 +416,7 @@ std::string rewrite_private_in_line(PreProcContext& ctx, const std::string& line
             i++;
             continue;
         }
-        // 检测 // 注释
+        
         if(ch == '/' && i+1 < n && line[i+1] == '/')
         {
             in_line_comment = true;
@@ -424,7 +424,7 @@ std::string rewrite_private_in_line(PreProcContext& ctx, const std::string& line
             i++;
             continue;
         }
-        // 识别标识符
+        
         if(is_id_start(static_cast<unsigned char>(ch)))
         {
             size_t start = i;
@@ -435,7 +435,7 @@ std::string rewrite_private_in_line(PreProcContext& ctx, const std::string& line
             std::string ident = line.substr(start, i - start);
             if(privSet.count(ident))
             {
-                // 需要重写私有字段
+                
                 out += rewrite_private_ident(ctx, ident);
             }
             else
@@ -444,7 +444,7 @@ std::string rewrite_private_in_line(PreProcContext& ctx, const std::string& line
             }
             continue;
         }
-        // 普通字符直接复制
+
         out.push_back(ch);
         i++;
     }

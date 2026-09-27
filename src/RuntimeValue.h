@@ -783,4 +783,17 @@ inline bool operator<(const RuntimeVal &a, const RuntimeVal &b)
         return false;
     }
 }
+inline bool operator>(const RuntimeVal &a, const RuntimeVal &b)
+{
+    return b < a;
+}
+inline bool operator<=(const RuntimeVal &a, const RuntimeVal &b)
+{
+    return !(b < a);
+}
+inline bool operator>=(const RuntimeVal &a, const RuntimeVal &b)
+{
+    return !(a < b);
+}
+
 #endif // RUNTIME_VALUE_H

@@ -292,7 +292,7 @@ p.sayHello();
 Person.info();
 ```
 
-- `self`：实例方法隐式第一个参数，代表当前对象实例，**不要手动写参数列表**，parser自动插入self参数。
+- `self`：实例方法隐式第一个参数，代表当前对象实例，**不要手动写self参数**，parser自动插入self参数。
 - `init`：构造函数；调用`new ClassName(args)`自动执行`init(args)`。
 - `static func`：静态方法，不属于实例，通过类名调用，没有self。
 - 对象使用`.`访问成员；对象成员可以任意读写。

@@ -1,20 +1,11 @@
-func fib_iter(n) begin
-    if(n<=1) begin
-        return 1;
-    end
-    a=1;
-    b=1;
-    i=2;
-    while(i<=n) begin
-        c = a+b;
-        a=b;
-        b=c;
-        i=i+1;
-    end
-    return b;
+num = tonum(prminput("please input a number:"));
+sum = 0;
+i=1;
+tb = time_ms();
+while(i<=num) begin
+    sum = sum + i*i;
+    i=i+1;
 end
-t1=time_ms();
-sum=fib_iter(5);
-t2=time_ms();
-outputLine("Execution time: ", t2-t1);
+te = time_ms();
+outputLine("Time:",te-tb);
 outputLine("Result:",sum);
