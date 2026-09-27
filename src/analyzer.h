@@ -36,7 +36,7 @@ public:
     } kind;
     std::vector<std::unique_ptr<ASTNode>> children;
     std::string val;
-    std::string val2; // 预留继承: 父类名称
+    std::string val2;
     RuntimeVal literal;
     size_t line = 0;
     ASTNode(Kind k) : kind(k) {}
@@ -1113,7 +1113,7 @@ std::unique_ptr<ASTNode> Parser::parse_class()
     next_tok();
     std::string cls_name = tok.val;
     expect(IDENT);
-    // 预留继承语法入口 class A : B，这里识别冒号+父类名存入val2
+
     std::string super_name;
     if (tok.type == COLON)
     {
@@ -1134,7 +1134,7 @@ std::unique_ptr<ASTNode> Parser::parse_class()
             is_static = true;
             next_tok();
         }
-        expect(T_FUNC); // 匹配T_FUNC，内部next_tok吃掉T_FUNC
+        expect(T_FUNC);
         size_t fun_ln = tok.line;
         std::string fname = tok.val;
         expect(IDENT);
@@ -1161,7 +1161,7 @@ std::unique_ptr<ASTNode> Parser::parse_class()
                 next_tok();
         }
         expect(RPAREN);
-        // 实例方法自动插入隐式self参数；static不插入
+
         if (!is_static)
         {
             params.insert(params.begin(), "self");

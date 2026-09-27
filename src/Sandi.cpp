@@ -4,14 +4,14 @@ int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter 1.8.1.beta\n";
+        std::cout << "SandScript interpreter 1.8.2.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         return 0;
     }
     if (std::string(argv[1]) == "--version")
     {
-        std::cout << "1.8.1.beta\n";
+        std::cout << "1.8.2.beta\n";
         return 0;
     }
     if (std::string(argv[1]) == "--copyright")
@@ -39,7 +39,8 @@ int main(int argc, char *argv[])
         std::cout << copyright << "\n";
         return 0;
     }
-    if (std::string(argv[1]) == "--copyright-apache"){
+    if (std::string(argv[1]) == "--copyright-apache")
+    {
         std::string copyright = R"XXX(
 Apache License
 Version 2.0, January 2004
@@ -248,7 +249,7 @@ limitations under the License.
     }
     if (std::string(argv[1]) == "--help")
     {
-        std::cout << "SandScript interpreter 1.8.1.beta\n";
+        std::cout << "SandScript interpreter 1.8.2.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         std::string help = R"XXX(
@@ -363,6 +364,10 @@ non_ascii      ::= #x80 ... #xFFFF ;
     auto ast = parse_source(src);
     Interpreter interp;
     EvalFrame top_frame;
+    for (int i = 2; i < argc; ++i)
+    {
+        interp.cmd_args.emplace_back(argv[i]);
+    }
     try
     {
         interp.eval(ast.get(), &interp.global, top_frame);

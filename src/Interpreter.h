@@ -28,7 +28,6 @@ auto map_find_const(MapT &m, const typename MapT::key_type &key)
     return m.end();
 }
 
-// 栈帧：控制流信号，每个执行上下文一份
 struct EvalFrame
 {
     bool has_return = false;
@@ -37,13 +36,12 @@ struct EvalFrame
     bool break_flag = false;
     bool continue_flag = false;
 
-    // 创建全新干净子帧（函数调用使用）
     EvalFrame make_child() const
     {
         EvalFrame cf{};
         return cf;
     }
-    // 创建用于表达式求值的临时帧（表达式内部return/break不会向外传播）
+
     static EvalFrame make_expr_frame()
     {
         EvalFrame ef{};
@@ -67,13 +65,11 @@ struct Interpreter
     FuncT *lookup_instance_method(ClassMeta *meta, const std::string &name);
     FuncT *lookup_static_method(ClassMeta *meta, const std::string &name);
     std::shared_ptr<ClassMeta> resolve_superclass(const std::string &super_name, Scope *scope, size_t line);
-
-    // get_lvalue 下标求值使用表达式临时帧
+    std::vector<std::string> cmd_args;
     RuntimeVal *get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *scope, EvalFrame &expr_frame, size_t line);
 
     void import_file(const std::string &path);
 
-    // eval: frame为当前**语句块栈帧**；表达式求值内部新建expr‑frame
     RuntimeVal eval(ASTNode *node, Scope *scope, EvalFrame &frame);
 };
 
@@ -202,7 +198,7 @@ void Interpreter::import_file(const std::string &path)
 
 RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
 {
-    // frame：当前**语句块栈帧**；表达式求值一律新建expr‑frame，不在此处短路表达式
+
     if (frame.break_flag || frame.continue_flag)
         return RuntimeVal();
 
@@ -440,12 +436,12 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
         {
             EvalFrame sub_frame = EvalFrame::make_expr_frame();
             auto sub = eval(node->children[0].get(), scope, sub_frame);
-            if (node->val == "!")
+            if (node->val == "!" || node->val == "not")
             {
                 auto *subnum = sub.as_num();
                 if (!subnum)
                 {
-                    std::cerr << "[" << ln << "] Runtime error: ! expects number\n";
+                    std::cerr << "[" << ln << "] Runtime error: not expects number\n";
                     return RuntimeVal();
                 }
                 return RuntimeVal((subnum->value == BigDecimal("0")) ? BigDecimal("1") : BigDecimal("0"));
@@ -466,14 +462,14 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
         }
         case ASTNode::BINARY:
         {
-            if (node->val == "&&")
+            if (node->val == "&&" || node->val == "and")
             {
                 EvalFrame lhs_frame = EvalFrame::make_expr_frame();
                 auto lhs = eval(node->children[0].get(), scope, lhs_frame);
                 auto *lnum = lhs.as_num();
                 if (!lnum)
                 {
-                    std::cerr << "[" << ln << "] Runtime error: && requires number\n";
+                    std::cerr << "[" << ln << "] Runtime error: and requires number\n";
                     return RuntimeVal();
                 }
                 if (lnum->value == BigDecimal("0"))
@@ -484,19 +480,19 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *rnum = rhs.as_num();
                 if (!rnum)
                 {
-                    std::cerr << "[" << ln << "] Runtime error: && requires number\n";
+                    std::cerr << "[" << ln << "] Runtime error: and requires number\n";
                     return RuntimeVal();
                 }
                 return RuntimeVal((rnum->value == BigDecimal("0")) ? BigDecimal("0") : BigDecimal("1"));
             }
-            if (node->val == "||")
+            if (node->val == "||" || node->val == "or")
             {
                 EvalFrame lhs_frame = EvalFrame::make_expr_frame();
                 auto lhs = eval(node->children[0].get(), scope, lhs_frame);
                 auto *lnum = lhs.as_num();
                 if (!lnum)
                 {
-                    std::cerr << "[" << ln << "] Runtime error: || requires number\n";
+                    std::cerr << "[" << ln << "] Runtime error: or requires number\n";
                     return RuntimeVal();
                 }
                 if (!(lnum->value == BigDecimal("0")))
@@ -507,7 +503,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *rnum = rhs.as_num();
                 if (!rnum)
                 {
-                    std::cerr << "[" << ln << "] Runtime error: || requires number\n";
+                    std::cerr << "[" << ln << "] Runtime error: or requires number\n";
                     return RuntimeVal();
                 }
                 return RuntimeVal((rnum->value == BigDecimal("0")) ? BigDecimal("0") : BigDecimal("1"));
@@ -1133,8 +1129,20 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 std::this_thread::sleep_for(std::chrono::milliseconds(ms));
                 return RuntimeVal();
             }
-
-            // 用户自定义函数调用
+            if (node->val == "args")
+            {
+                if (!node->children.empty())
+                {
+                    std::cerr << "[" << ln << "] Runtime error: args() takes no arguments\n";
+                    return RuntimeVal();
+                }
+                Array arr;
+                for (auto &s : this->cmd_args)
+                {
+                    arr.push_back(RuntimeVal(s));
+                }
+                return RuntimeVal(std::move(arr));
+            }
             auto fv = scope->get(node->val)->clone();
             auto *fptr = fv.as_func();
             if (!fptr)
@@ -1195,14 +1203,12 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 fscope.set(restName, RuntimeVal(std::move(restArr)));
             }
 
-            // 创建函数独立子栈帧
             EvalFrame child_frame = frame.make_child();
             eval(func_body, &fscope, child_frame);
             return RuntimeVal(std::move(child_frame.ret_val));
         }
         case ASTNode::RETURN:
         {
-            // return 后面的表达式求值：使用表达式临时帧
             EvalFrame expr_frame = EvalFrame::make_expr_frame();
             frame.ret_val = eval(node->children[0].get(), scope, expr_frame);
             frame.has_return = true;
