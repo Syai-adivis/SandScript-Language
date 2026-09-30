@@ -43,7 +43,7 @@
         },
         "keywords": {
             "name": "keyword.control.sand",
-            "match": "\\b(if|else|while|for|in|func|return|break|continue|output|input|range|begin|end|from|import|tonum|prminput|outputLine|class|new|static|super|init|tostring|and|or|not)\\b"
+            "match": "\\b(if|else|while|for|in|func|return|break|continue|output|input|range|begin|end|from|import|tonum|prminput|outputLine|class|new|static|super|init|tostring|and|or|not|lambda)\\b"
         }
     }
 }
