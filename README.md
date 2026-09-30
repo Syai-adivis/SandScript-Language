@@ -4,7 +4,7 @@
 **SandScript** is a modern Interpreted programming language.
 
 > ⚠️ **Status: Early Development**
-> Syntax, APIs and compiler behaviors are subject to breaking changes. Not ready for production use.
+> Syntax, APIs and interpreter behaviors are subject to breaking changes. Not ready for production use.
 
 ## 🚀 Quick Start
 
