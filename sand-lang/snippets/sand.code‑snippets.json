@@ -1,0 +1,11 @@
+{
+    "begin‑end block": {
+        "prefix": "begin",
+        "body": [
+            "begin",
+            "\t${0}",
+            "end"
+        ],
+        "description": "Sand begin‑end 代码块"
+    }
+}

@@ -1,0 +1,40 @@
+{
+    "name": "sand-lang",
+    "displayName": "Sand Language",
+    "description": "Sand script language support",
+    "version": "0.0.6",
+    "engines": {
+        "vscode": "^1.80.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [
+            {
+                "id": "sand",
+                "aliases": [
+                    "Sand",
+                    "sand"
+                ],
+                "extensions": [
+                    ".sand"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "sand",
+                "scopeName": "source.sand",
+                "path": "./syntaxes/sand.tmlanguage.json"
+            }
+        ],
+        "snippets": [
+            {
+                "language": "sand",
+                "path": "./snippets/sand.code-snippets.json"
+            }
+        ]
+    }
+}
