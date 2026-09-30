@@ -135,8 +135,8 @@ struct VMClosure
 
 struct LoopPatch
 {
-    size_t continue_pc; // continue跳转目标pc
-    size_t break_patch; // break的jmp回填位置
+    size_t continue_pc;
+    size_t break_patch;
 };
 
 struct EvalFrame
@@ -220,6 +220,7 @@ struct Interpreter
     FuncT *lookup_static_method(ClassMeta *meta, const std::string &name);
     std::shared_ptr<ClassMeta> resolve_superclass(const std::string &super_name, Scope *scope, size_t line);
     RuntimeVal *get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *scope, EvalFrame &expr_frame, size_t line);
+    std::vector<std::string> cmd_args;
     void import_file(const std::string &path);
     RuntimeVal eval(ASTNode *node, Scope *scope, EvalFrame &frame);
 };

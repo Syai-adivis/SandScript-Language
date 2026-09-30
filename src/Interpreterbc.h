@@ -514,7 +514,7 @@ void Compiler::compile_expr(ASTNode *node)
         }
         uint32_t argCnt = (uint32_t)node->children.size();
         std::string fname = node->val;
-        if (fname == "output" || fname == "outputLine" || fname == "input" || fname == "tonum" || fname == "tostring" || fname == "time" || fname == "time_ms" || fname == "sleep" || fname == "prminput")
+        if (fname == "output" || fname == "outputLine" || fname == "input" || fname == "tonum" || fname == "tostring" || fname == "time" || fname == "time_ms" || fname == "sleep" || fname == "prminput" || fname == "args")
         {
             uint32_t cidx = chunk.add_const(RuntimeVal(fname));
             chunk.emit_op(OP_PUSH_CONST);
@@ -1208,6 +1208,22 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
                     safe_to_size_t(arg.as_num()->value, ms);
                     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
                     push(RuntimeVal());
+                    break;
+                }
+                if (fname == "args")
+                {
+                    if (argCnt != 0)
+                    {
+                        std::cerr << "[VM] args() takes no arguments\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    Array arr;
+                    for (auto &s : host_interp->cmd_args)
+                    {
+                        arr.push_back(RuntimeVal(s));
+                    }
+                    push(RuntimeVal(std::move(arr)));
                     break;
                 }
                 if (fname == "prminput")
