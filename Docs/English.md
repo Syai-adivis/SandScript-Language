@@ -457,8 +457,9 @@ primary        ::= NUM
                  | array_lit
                  | dict_lit
                  | range_call
+                 | lambda_expr
                  | call_or_index ;
-
+lambda_expr    ::= "lambda" "(" param_list ")" block ;
 array_lit      ::= "[" [ expr ( "," expr )* ] "]" ;
 dict_lit       ::= "{" [ expr ":" expr ( "," expr ":" expr )* ] "}" ;
 range_call     ::= "range" "(" expr "," expr [ "," expr ] ")" ;

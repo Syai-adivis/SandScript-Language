@@ -4,14 +4,14 @@ int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter 1.8.2.beta\n";
+        std::cout << "SandScript interpreter 1.9.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         return 0;
     }
     if (std::string(argv[1]) == "--version")
     {
-        std::cout << "1.8.2.beta\n";
+        std::cout << "1.9.beta\n";
         return 0;
     }
     if (std::string(argv[1]) == "--copyright")
@@ -249,7 +249,7 @@ limitations under the License.
     }
     if (std::string(argv[1]) == "--help")
     {
-        std::cout << "SandScript interpreter 1.8.2.beta\n";
+        std::cout << "SandScript interpreter 1.9.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         std::string help = R"XXX(
@@ -316,8 +316,9 @@ primary        ::= NUM
                  | array_lit
                  | dict_lit
                  | range_call
+                 | lambda_expr
                  | call_or_index ;
-
+lambda_expr    ::= "lambda" "(" param_list ")" block ;
 array_lit      ::= "[" [ expr ( "," expr )* ] "]" ;
 dict_lit       ::= "{" [ expr ":" expr ( "," expr ":" expr )* ] "}" ;
 range_call     ::= "range" "(" expr "," expr [ "," expr ] ")" ;

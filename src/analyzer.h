@@ -32,7 +32,8 @@ public:
         NEW_OBJ,
         MEMBER_ACCESS,
         MEMBER_CALL,
-        MEMBER_ASSIGN
+        MEMBER_ASSIGN,
+        LAMBDA_EXPR
     } kind;
     std::vector<std::unique_ptr<ASTNode>> children;
     std::string val;
@@ -98,6 +99,7 @@ enum TokenType
     SEMI,
     T_SUPER,
     DOTDOTDOT,
+    T_LAMBDA,
     DOT
 };
 struct Token
@@ -232,6 +234,8 @@ struct Lexer
             t = T_NEW;
         else if (word == "super")
             t = T_SUPER;
+        else if (word == "lambda")
+            t = T_LAMBDA;
         return Token{t, word, start, ln};
     }
     Token read_num()
@@ -489,6 +493,7 @@ struct Parser
     std::unique_ptr<ASTNode> parse_class();
     std::unique_ptr<ASTNode> parse_new();
     std::unique_ptr<ASTNode> parse_member(std::unique_ptr<ASTNode> base, size_t ln);
+    std::unique_ptr<ASTNode> parse_lambda();
 };
 std::unique_ptr<ASTNode> Parser::parse_program()
 {
@@ -680,7 +685,6 @@ std::unique_ptr<ASTNode> Parser::parse_stmt()
         else
         {
             auto e = parse_call_or_index(name, l);
-            // ========= 处理 obj.x = expr 成员赋值 =========
             if (e->kind == ASTNode::MEMBER_ACCESS && tok.type == ASSIGN)
             {
                 next_tok();
@@ -710,6 +714,63 @@ std::unique_ptr<ASTNode> Parser::parse_stmt()
     }
     }
 }
+std::unique_ptr<ASTNode> Parser::parse_lambda()
+{
+    size_t ln = tok.line;
+    next_tok();
+    expect(LPAREN);
+    std::vector<std::string> params;
+    while (tok.type != RPAREN)
+    {
+        if (tok.type == DOTDOTDOT)
+        {
+            next_tok();
+            if (tok.type != IDENT)
+            {
+                std::cerr << "[" << tok.line << "] Syntax error: ... requires identifier\n";
+            }
+            params.push_back("..." + tok.val);
+            next_tok();
+            break;
+        }
+        params.push_back(tok.val);
+        expect(IDENT);
+        if (tok.type == COMMA)
+            next_tok();
+    }
+    expect(RPAREN);
+    auto block = parse_block();
+    auto check_no_nested_func = [&](auto &&self, ASTNode *node) -> bool
+    {
+        if (node->kind == ASTNode::FUNC_DEF || node->kind == ASTNode::LAMBDA_EXPR)
+        {
+            std::cerr << "[" << node->line << "] Syntax error: nested function/lambda is not allowed\n";
+            return false;
+        }
+        for (auto &ch : node->children)
+        {
+            if (!self(self, ch.get()))
+                return false;
+        }
+        return true;
+    };
+    if (!check_no_nested_func(check_no_nested_func, block.get()))
+    {
+        return std::make_unique<ASTNode>(ASTNode::PROGRAM);
+    }
+
+    auto node = std::make_unique<ASTNode>(ASTNode::LAMBDA_EXPR);
+    node->line = ln;
+    for (auto &p : params)
+    {
+        auto v = std::make_unique<ASTNode>(ASTNode::VAR);
+        v->val = p;
+        node->children.push_back(std::move(v));
+    }
+    node->children.push_back(std::move(block));
+    return node;
+}
+
 std::unique_ptr<ASTNode> Parser::parse_if()
 {
     size_t ln = tok.line;
@@ -1028,6 +1089,10 @@ std::unique_ptr<ASTNode> Parser::parse_primary()
     {
         next_tok();
         return parse_call_or_index("super", ln);
+    }
+    case T_LAMBDA:
+    {
+        return parse_lambda();
     }
     default:
         std::cerr << "[" << ln << "] Parse error: bad expression\n";

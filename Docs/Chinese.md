@@ -346,16 +346,13 @@ end
 |`sleep(ms)`|休眠指定毫秒数|
 |`args()`|命令行参数|
 
-> 没有内置数组push、length，需要自己封装函数实现。
+> 目前没有内置数组push、length，需要自己封装函数实现。
 
 ## 10 预处理器指令（行首`#`开头）
 预处理在词法解析之前执行，处理宏替换、include、条件编译、private重命名。
 
-### `#include filename`
+### `#from path include filename`
 导入文件，递归预处理，防止循环重复导入。
-```sand
-#include "util.sand"
-```
 
 ### `#from ; include filename`
 从exe所在目录导入；`;`代表使用exe目录作为基准。
@@ -372,7 +369,7 @@ output(PI);
 ```
 
 ### `#inline name=value`
-快捷定义符号+宏。
+内联常量。
 ```sand
 #inline DEBUG=1
 ```
@@ -453,8 +450,9 @@ primary        ::= NUM
                  | array_lit
                  | dict_lit
                  | range_call
+                 | lambda_expr
                  | call_or_index ;
-
+lambda_expr    ::= "lambda" "(" param_list ")" block ;
 array_lit      ::= "[" [ expr ( "," expr )* ] "]" ;
 dict_lit       ::= "{" [ expr ":" expr ( "," expr ":" expr )* ] "}" ;
 range_call     ::= "range" "(" expr "," expr [ "," expr ] ")" ;

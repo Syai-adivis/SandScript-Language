@@ -613,7 +613,6 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
         }
         case ASTNode::FOR_IN:
         {
-            // for‑in序列求值：表达式帧
             EvalFrame seq_frame = EvalFrame::make_expr_frame();
             auto seq_val = eval(node->children[0].get(), scope, seq_frame);
             auto *arrptr = seq_val.as_array();
@@ -721,6 +720,18 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 d.insert_or_assign(std::move(k), std::move(v));
             }
             return RuntimeVal(std::move(d));
+        }
+        case ASTNode::LAMBDA_EXPR:
+        {
+            std::vector<std::string> params;
+            size_t paramCnt = node->children.size() - 1;
+            for (size_t i = 0; i < paramCnt; i++)
+            {
+                params.push_back(node->children[i]->val);
+            }
+            ASTNode *bodyAst = node->children.back().get();
+            FuncT ft = {params, bodyAst};
+            return RuntimeVal(std::move(ft));
         }
         case ASTNode::INDEX:
         {
