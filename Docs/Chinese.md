@@ -251,6 +251,9 @@ end
 output(sum(3,5));
 ```
 
+### Lambda表达式
+`lambda (pamams) begin ... end`
+
 ### 可变参数 `...rest`
 `...`标记可变参数，剩余全部参数收集为数组给到rest变量。可变参数必须写在参数列表**最后一位**。
 ```sand

@@ -254,6 +254,9 @@ end
 output(sum(3,5));
 ```
 
+## Lambda expression
+`lambda (pamams) begin ... end`
+
 ### Variadic parameters `...rest`
 `...` marks variadic capture. Remaining arguments are collected into an array. Variadic parameter **must appear last** in parameter list.
 ```sand
@@ -376,7 +379,7 @@ output(PI);
 ```
 
 ### `#inline name=value`
-Convenience shortcut to define symbol + macro in one line.
+Inline costnant.
 ```sand
 #inline DEBUG=1
 ```
