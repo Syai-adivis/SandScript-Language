@@ -26,13 +26,15 @@ Sandi hello.sand
 ## 📂 Project Structure
 
 ```
-sandi/
+Sand/
+├── sand-lang/       # Simple VS Code extention
 ├── src/             # Compiler and runtime source code
-├── docs/            # Syntax & development documentation
-├── examples/        # Example programs (*.sandi)
-├── bin/             # Compiled interpreter binary
+├── test/            # Test sourse
 ├── LICENSE          # MIT License
 ├── LICENSE-APACHE   # Apache License 2.0
+├── SECURITY.md      # Security indrodution
+├── writer.txt       # Writer infomation
+├── .gitignore       # Git ignore
 └── README.md        # Project introduction
 ```
 
