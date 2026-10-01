@@ -2,7 +2,7 @@
 #define RUNTIME_VALUE_H
 #include "includes.h"
 const int BD_DIV_PRECISION = 50;
-// ===================== BigDecimal =====================
+
 struct BigDecimal
 {
     std::string integer;
@@ -313,7 +313,7 @@ std::string BigDecimal::to_string() const
         out += "." + fractional;
     return out;
 }
-// ===================== 前向声明 & 基础类型 =====================
+
 class ASTNode;
 using FuncT = std::pair<std::vector<std::string>, ASTNode *>;
 struct ClassMeta
@@ -344,7 +344,7 @@ enum class RtKind
     CLASS_META,
     OBJECT
 };
-// 抽象基类，只放虚函数，不实例化容器
+
 struct RuntimeValueBase
 {
     RtKind kind;
@@ -353,9 +353,9 @@ struct RuntimeValueBase
     virtual std::string to_string() const = 0;
     virtual std::unique_ptr<RuntimeValueBase> clone() const = 0;
 };
-// 前向声明
+
 struct RuntimeVal;
-// ===================== 派生子类【仅声明，不写函数体】 =====================
+
 struct NumValue : RuntimeValueBase
 {
     BigDecimal value;
@@ -408,13 +408,12 @@ struct ClassMetaValue : RuntimeValueBase
 };
 struct ObjectValue : RuntimeValueBase
 {
-    // 【改动】不再直接存对象，存shared_ptr，实现引用语义
     std::shared_ptr<ObjectInstance> value;
     explicit ObjectValue(std::shared_ptr<ObjectInstance> oi);
     std::string to_string() const override;
     std::unique_ptr<RuntimeValueBase> clone() const override;
 };
-// ===================== RuntimeVal 完整定义 =====================
+
 struct RuntimeVal
 {
     std::unique_ptr<RuntimeValueBase> ptr;
@@ -426,13 +425,12 @@ struct RuntimeVal
     explicit RuntimeVal(DictValue::Dict d);
     explicit RuntimeVal(FuncT f);
     explicit RuntimeVal(std::shared_ptr<ClassMeta> cm);
-    // 【改动】删除旧 ObjectInstance 栈对象构造，改用shared_ptr
     explicit RuntimeVal(std::shared_ptr<ObjectInstance> oi);
-
-    // 移动语义，删除拷贝
-    RuntimeVal(RuntimeVal &&) noexcept = default;
+    RuntimeVal(const RuntimeVal &other)
+        : ptr(other.ptr ? other.ptr->clone() : nullptr)
+    {
+    }
     RuntimeVal &operator=(RuntimeVal &&) noexcept = default;
-    RuntimeVal(const RuntimeVal &) = delete;
     RuntimeVal &operator=(const RuntimeVal &) = delete;
 
     RtKind type() const { return ptr ? ptr->kind : RtKind::NIL; }
@@ -454,7 +452,7 @@ struct RuntimeVal
     ObjectValue *as_object();
     const ObjectValue *as_object() const;
 };
-// 对外别名
+
 using Array = ArrayValue::Array;
 using Dict = DictValue::Dict;
 // ==========================================
@@ -473,14 +471,12 @@ inline NilValue::NilValue()
 inline ClassMetaValue::ClassMetaValue(std::shared_ptr<ClassMeta> v)
     : RuntimeValueBase(RtKind::CLASS_META), value(std::move(v)) {}
 
-// 【改动】ObjectValue 构造
 inline ObjectValue::ObjectValue(std::shared_ptr<ObjectInstance> oi)
     : RuntimeValueBase(RtKind::OBJECT), value(std::move(oi)) {}
 
 inline RuntimeVal::RuntimeVal(std::shared_ptr<ObjectInstance> oi)
     : ptr(std::make_unique<ObjectValue>(std::move(oi))) {}
 
-// 【改动】ObjectValue::clone：只复制shared_ptr，不拷贝成员，引用语义核心
 inline std::unique_ptr<RuntimeValueBase> ObjectValue::clone() const
 {
     return std::make_unique<ObjectValue>(value);
@@ -577,7 +573,6 @@ inline const ObjectValue *RuntimeVal::as_object() const
     return dynamic_cast<const ObjectValue *>(ptr.get());
 }
 
-// -------- 派生类 to_string / clone 实现 --------
 inline std::string NumValue::to_string() const
 {
     return value.to_string();
@@ -664,7 +659,6 @@ inline std::unique_ptr<RuntimeValueBase> ClassMetaValue::clone() const
     return std::make_unique<ClassMetaValue>(value);
 }
 
-// ===================== 比较运算符 =====================
 inline bool operator==(const RuntimeVal &a, const RuntimeVal &b)
 {
     if (a.type() != b.type())
@@ -711,7 +705,6 @@ inline bool operator==(const RuntimeVal &a, const RuntimeVal &b)
         return a.as_classmeta()->value.get() == b.as_classmeta()->value.get();
     case RtKind::OBJECT:
     {
-        // 对象改为身份相等：shared_ptr指针是否指向同一个堆实例
         const auto &objA = a.as_object()->value;
         const auto &objB = b.as_object()->value;
         return objA.get() == objB.get();

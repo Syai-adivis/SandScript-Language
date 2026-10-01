@@ -4,14 +4,14 @@ int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter 1.9.beta\n";
+        std::cout << "SandScript interpreter 2.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         return 0;
     }
     if (std::string(argv[1]) == "--version")
     {
-        std::cout << "1.9.beta\n";
+        std::cout << "2.beta\n";
         return 0;
     }
     if (std::string(argv[1]) == "--copyright")
@@ -249,7 +249,7 @@ limitations under the License.
     }
     if (std::string(argv[1]) == "--help")
     {
-        std::cout << "SandScript interpreter 1.9.beta\n";
+        std::cout << "SandScript interpreter 2.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         std::string help = R"XXX(

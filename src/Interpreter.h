@@ -789,7 +789,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto it = members.find(mem);
                 if (it != members.end())
                 {
-                    return RuntimeVal(std::move(it->second));
+                    return it->second.clone();
                 }
                 std::cerr << "[" << ln << "] Runtime error: object member '" << mem << "' not found\n";
                 return RuntimeVal();
@@ -1153,6 +1153,62 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     arr.push_back(RuntimeVal(s));
                 }
                 return RuntimeVal(std::move(arr));
+            }
+            if (node->val == "conc")
+            {
+                if (node->children.size() != 2)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: conc() expects exactly two arguments\n";
+                    return RuntimeVal();
+                }
+                EvalFrame a_frame = EvalFrame::make_expr_frame();
+                auto arg0 = eval(node->children[0].get(), scope, a_frame);
+                EvalFrame b_frame = EvalFrame::make_expr_frame();
+                auto arg1 = eval(node->children[1].get(), scope, b_frame);
+
+                auto *arr0 = arg0.as_array();
+                if (!arr0)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: conc() first argument must be array\n";
+                    return RuntimeVal();
+                }
+                Array res = arr0->value;
+                auto *arr1 = arg1.as_array();
+                if (arr1)
+                {
+                    for (auto &elem : arr1->value)
+                    {
+                        res.push_back(elem.clone());
+                    }
+                }
+                else
+                {
+                    res.push_back(arg1.clone());
+                }
+                return RuntimeVal(std::move(res));
+            }
+            if (node->val == "len")
+            {
+                if (node->children.size() != 1)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: len() expects exactly one argument\n";
+                    return RuntimeVal();
+                }
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                auto arg = eval(node->children[0].get(), scope, arg_frame);
+                if (auto *ap = arg.as_array())
+                {
+                    return RuntimeVal(BigDecimal(std::to_string(ap->value.size())));
+                }
+                else if (auto *sp = arg.as_str())
+                {
+                    return RuntimeVal(BigDecimal(std::to_string(sp->value.size())));
+                }
+                else
+                {
+                    std::cerr << "[" << ln << "] Runtime error: len() expects array or string\n";
+                    return RuntimeVal();
+                }
             }
             auto fv = scope->get(node->val)->clone();
             auto *fptr = fv.as_func();

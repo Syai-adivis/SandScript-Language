@@ -1263,6 +1263,65 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
                     push(RuntimeVal(s));
                     break;
                 }
+                // len
+                if (fname == "len")
+                {
+                    if (argCnt != 1)
+                    {
+                        std::cerr << "[VM] len() expects exactly one argument\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    auto arg = pop();
+                    if (auto *ap = arg.as_array())
+                    {
+                        push(RuntimeVal(BigDecimal(std::to_string(ap->value.size()))));
+                    }
+                    else if (auto *sp = arg.as_str())
+                    {
+                        push(RuntimeVal(BigDecimal(std::to_string(sp->value.size()))));
+                    }
+                    else
+                    {
+                        std::cerr << "[VM] len() expects array or string\n";
+                        push(RuntimeVal());
+                    }
+                    break;
+                }
+                // conc
+                if (fname == "conc")
+                {
+                    if (argCnt != 2)
+                    {
+                        std::cerr << "[VM] conc() expects exactly two arguments\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    auto arg1 = pop();
+                    auto arg0 = pop();
+                    auto *arr0 = arg0.as_array();
+                    if (!arr0)
+                    {
+                        std::cerr << "[VM] conc() first argument must be array\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    Array res = arr0->value;
+                    auto *arr1 = arg1.as_array();
+                    if (arr1)
+                    {
+                        for (auto &elem : arr1->value)
+                        {
+                            res.push_back(elem.clone());
+                        }
+                    }
+                    else
+                    {
+                        res.push_back(arg1.clone());
+                    }
+                    push(RuntimeVal(std::move(res)));
+                    break;
+                }
             }
             VMClosure *pClos = unwrap_closure(funcVal);
             if (pClos != nullptr)
