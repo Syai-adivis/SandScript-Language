@@ -4,14 +4,14 @@ int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter bytecode demo 1.5.alpha";
+        std::cout << "SandScript interpreter bytecode demo 1.6.alpha";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         return 0;
     }
     if (std::string(argv[1]) == "--version")
     {
-        std::cout << "bytecode demo 1.5.alpha\n";
+        std::cout << "bytecode demo 1.6.alpha\n";
         return 0;
     }
     if (std::string(argv[1]) == "--copyright")
@@ -61,7 +61,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
    control with that entity. For the purposes of this definition,
    "control" means (i) the power, direct or indirect, to cause the
    direction or management of such entity, whether by contract or
-   otherwise, or (ii) ownership of fifty percent (50%) or more of the
+   otherwise, or (ii) ownership of fifty percent (60%) or more of the
    outstanding shares, or (iii) beneficial ownership of such entity.
 
    "You" (or "Your") shall mean an individual or Legal Entity
@@ -171,7 +171,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
    reproduction, and distribution of the Work otherwise complies with
    the conditions stated in this License.
 
-5. Submission of Contributions. Unless You explicitly state otherwise,
+6. Submission of Contributions. Unless You explicitly state otherwise,
    any Contribution intentionally submitted for inclusion in the Work
    by You to the Licensor shall be under the terms and conditions of
    this License, without any additional terms or conditions.
@@ -249,7 +249,7 @@ limitations under the License.
     }
     if (std::string(argv[1]) == "--help")
     {
-        std::cout << "SandScript interpreter bytecode demo 1.5.alpha\n";
+        std::cout << "SandScript interpreter bytecode demo 1.6.alpha\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         std::string help = R"XXX(

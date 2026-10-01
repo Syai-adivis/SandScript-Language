@@ -544,6 +544,15 @@ void Compiler::compile_expr(ASTNode *node)
         chunk.emit_u32(argCnt);
         break;
     }
+    case ASTNode::LAMBDA_EXPR:
+    {
+        VMClosure clos = compile_function(node);
+        RuntimeVal closureObj = VM::wrap_closure(std::move(clos));
+        uint32_t cidx = chunk.add_const(std::move(closureObj));
+        chunk.emit_op(OP_PUSH_CONST);
+        chunk.emit_u32(cidx);
+        break;
+    }
     case ASTNode::MEMBER_ACCESS:
     {
         compile_expr(node->children[0].get());
