@@ -1210,6 +1210,42 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     return RuntimeVal();
                 }
             }
+            if (node->val == "eBuddha")
+            {
+                std::string eB = R"XXX(
+Eastern mysticism:
+                _ooOoo_
+               o8888888o
+               88" . "88
+               (| -_- |)
+               O\  =  /O
+            ____/`---'\____
+          .'  \\|     |//  `.
+         /  \\|||  :  |||//  \
+        /  _||||| -:- |||||-  \
+        |   | \\\  -  /// |   |
+        | \_|  ''\---/''  |   |
+         \  .-\__ `-` ___/-. /
+        ___`. .'  /--\  `. .'___
+    ."" '<  `.___\_<|>_/___.' >' "".
+   | |:`-`. `_. `\`.;`\ _ /`;.`/-`:| |
+   \  \ `_.   \_ __\ /__ _/   .-` /  /
+====`-.____`.___ \_____/___.-`___.-'=====
+                  | | |
+                 `=---='
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          佛祖保佑       永无BUG
+          用例全过       解析正确
+          编译通过       运行正常
+                ----------
+                |********|
+                |********|
+                |********|
+                ----------
+                    )XXX";
+                std::cout << eB << std::endl;
+                return RuntimeVal();
+            }
             auto fv = scope->get(node->val)->clone();
             auto *fptr = fv.as_func();
             if (!fptr)

@@ -514,7 +514,7 @@ void Compiler::compile_expr(ASTNode *node)
         }
         uint32_t argCnt = (uint32_t)node->children.size();
         std::string fname = node->val;
-        if (fname == "output" || fname == "outputLine" || fname == "input" || fname == "tonum" || fname == "tostring" || fname == "time" || fname == "time_ms" || fname == "sleep" || fname == "prminput" || fname == "args")
+        if (fname == "output" || fname == "outputLine" || fname == "input" || fname == "tonum" || fname == "tostring" || fname == "time" || fname == "time_ms" || fname == "sleep" || fname == "prminput" || fname == "args" || fname == "len" || fname == "conc" || fname == "eBuddha")
         {
             uint32_t cidx = chunk.add_const(RuntimeVal(fname));
             chunk.emit_op(OP_PUSH_CONST);
@@ -1320,6 +1320,44 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
                         res.push_back(arg1.clone());
                     }
                     push(RuntimeVal(std::move(res)));
+                    break;
+                }
+                // buddha
+                if (fname == "eBuddha")
+                {
+                    std::string eB = R"XXX(
+Eastern mysticism:
+                _ooOoo_
+               o8888888o
+               88" . "88
+               (| -_- |)
+               O\  =  /O
+            ____/`---'\____
+          .'  \\|     |//  `.
+         /  \\|||  :  |||//  \
+        /  _||||| -:- |||||-  \
+        |   | \\\  -  /// |   |
+        | \_|  ''\---/''  |   |
+         \  .-\__ `-` ___/-. /
+        ___`. .'  /--\  `. .'___
+    ."" '<  `.___\_<|>_/___.' >' "".
+   | |:`-`. `_. `\`.;`\ _ /`;.`/-`:| |
+   \  \ `_.   \_ __\ /__ _/   .-` /  /
+====`-.____`.___ \_____/___.-`___.-'=====
+                  | | |
+                 `=---='
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          佛祖保佑       永无BUG
+          用例全过       解析正确
+          编译通过       运行正常
+                ----------
+                |********|
+                |********|
+                |********|
+                ----------
+                    )XXX";
+                    std::cout << eB << std::endl;
+                    push(RuntimeVal());
                     break;
                 }
             }
