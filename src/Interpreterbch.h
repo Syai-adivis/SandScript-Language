@@ -75,6 +75,8 @@ enum OpCode : uint8_t
     OP_COMPOUND_DIV,
     OP_FORIN_ITER, // u32 varNameIdx
     OP_CLASS_META, // u32 nameIdx, u32 superIdx, u32 methodCount
+    OP_SWITCH,     // u32 caseCount
+    OP_CASE_PATTERN,
     OP_IMPORT,
     OP_HALT
 };

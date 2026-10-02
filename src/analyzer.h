@@ -33,6 +33,8 @@ public:
         MEMBER_ACCESS,
         MEMBER_CALL,
         MEMBER_ASSIGN,
+        SWITCH,
+        CASE_PATTERN,
         LAMBDA_EXPR
     } kind;
     std::vector<std::unique_ptr<ASTNode>> children;
@@ -100,6 +102,9 @@ enum TokenType
     T_SUPER,
     DOTDOTDOT,
     T_LAMBDA,
+    T_SWITCH,
+    T_CASE,
+    T_DEFAULT,
     DOT
 };
 struct Token
@@ -236,6 +241,12 @@ struct Lexer
             t = T_SUPER;
         else if (word == "lambda")
             t = T_LAMBDA;
+        else if (word == "switch")
+            t = T_SWITCH;
+        else if (word == "case")
+            t = T_CASE;
+        else if (word == "default")
+            t = T_DEFAULT;
         return Token{t, word, start, ln};
     }
     Token read_num()
@@ -494,6 +505,8 @@ struct Parser
     std::unique_ptr<ASTNode> parse_new();
     std::unique_ptr<ASTNode> parse_member(std::unique_ptr<ASTNode> base, size_t ln);
     std::unique_ptr<ASTNode> parse_lambda();
+    std::unique_ptr<ASTNode> parse_case_pattern_expr();
+    std::unique_ptr<ASTNode> parse_switch();
 };
 std::unique_ptr<ASTNode> Parser::parse_program()
 {
@@ -713,6 +726,137 @@ std::unique_ptr<ASTNode> Parser::parse_stmt()
         return wrap;
     }
     }
+}
+std::unique_ptr<ASTNode> Parser::parse_case_pattern_expr()
+{
+    using ParseFn = std::function<std::unique_ptr<ASTNode>()>;
+    ParseFn parse_pattern_or;
+    parse_pattern_or = [&]() -> std::unique_ptr<ASTNode>
+    {
+        auto lhs = [&]() -> std::unique_ptr<ASTNode>
+        {
+            auto lhs = parse_primary();
+            while (tok.type == AND_AND)
+            {
+                size_t ln = tok.line;
+                std::string op = tok.val;
+                next_tok();
+                auto n = std::make_unique<ASTNode>(ASTNode::BINARY);
+                n->val = op;
+                n->line = ln;
+                n->children.push_back(std::move(lhs));
+                n->children.push_back(parse_primary());
+                lhs = std::move(n);
+            }
+            return lhs;
+        }();
+        while (tok.type == OR_OR)
+        {
+            size_t ln = tok.line;
+            std::string op = tok.val;
+            next_tok();
+            auto n = std::make_unique<ASTNode>(ASTNode::BINARY);
+            n->val = op;
+            n->line = ln;
+            n->children.push_back(std::move(lhs));
+            n->children.push_back(parse_pattern_or());
+            lhs = std::move(n);
+        }
+        return lhs;
+    };
+    return parse_pattern_or();
+}
+std::unique_ptr<ASTNode> Parser::parse_switch()
+{
+    size_t ln = tok.line;
+    next_tok();
+    expect(LPAREN);
+    auto subject_expr = parse_expr();
+    expect(RPAREN);
+    expect(T_BEGIN);
+
+    auto switch_node = std::make_unique<ASTNode>(ASTNode::SWITCH);
+    switch_node->line = ln;
+    switch_node->children.push_back(std::move(subject_expr));
+
+    std::unordered_set<std::string> case_literals;
+    bool seen_default = false;
+
+    while (tok.type != T_END && tok.type != T_EOF)
+    {
+        size_t case_ln = tok.line;
+        bool is_default = (tok.type == T_DEFAULT);
+        if (is_default)
+        {
+            next_tok();
+            if (seen_default)
+            {
+                std::cerr << "[" << case_ln << "] Syntax error: multiple default in one switch\n";
+            }
+            seen_default = true;
+        }
+        else if (tok.type == T_CASE)
+        {
+            next_tok();
+        }
+        else
+        {
+            std::cerr << "[" << tok.line << "] Syntax error: expect case / default inside switch begin\n";
+            break;
+        }
+
+        std::unique_ptr<ASTNode> pattern_expr;
+        if (!is_default)
+        {
+            pattern_expr = parse_case_pattern_expr();
+            if (pattern_expr->kind == ASTNode::LIT_NUM || pattern_expr->kind == ASTNode::LIT_STR)
+            {
+                std::string lit_key = pattern_expr->literal.to_string();
+                if (case_literals.count(lit_key))
+                {
+                    std::cerr << "[" << case_ln << "] Syntax error: duplicate case literal " << lit_key << "\n";
+                }
+                case_literals.insert(lit_key);
+            }
+        }
+
+        std::unique_ptr<ASTNode> guard_expr = nullptr;
+        if (tok.type == T_IF)
+        {
+            next_tok();
+            guard_expr = parse_expr();
+        }
+
+        expect(COLON);
+        auto body_stmt = parse_stmt();
+
+        auto case_node = std::make_unique<ASTNode>(ASTNode::CASE_PATTERN);
+        case_node->val = is_default ? "default" : "case";
+        case_node->line = case_ln;
+        if (!is_default)
+        {
+            case_node->children.push_back(std::move(pattern_expr));
+        }
+        else
+        {
+            case_node->children.push_back(nullptr);
+        }
+        if (guard_expr)
+        {
+            case_node->children.push_back(std::move(guard_expr));
+        }
+        else
+        {
+            auto true_lit = std::make_unique<ASTNode>(ASTNode::LIT_NUM);
+            true_lit->literal = RuntimeVal(BigDecimal("1"));
+            case_node->children.push_back(std::move(true_lit));
+        }
+        case_node->children.push_back(std::move(body_stmt));
+
+        switch_node->children.push_back(std::move(case_node));
+    }
+    expect(T_END);
+    return switch_node;
 }
 std::unique_ptr<ASTNode> Parser::parse_lambda()
 {

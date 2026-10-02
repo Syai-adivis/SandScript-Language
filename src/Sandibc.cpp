@@ -4,14 +4,14 @@ int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter bytecode demo 1.7.alpha";
-        std::cout << "Usage: Sandi script.sand\n";
-        std::cout << "Example: Sandi test.sand\n";
+        std::cout << "SandScript interpreter bytecode demo 1.8.alpha";
+        std::cout << "Usage: Sandibc script.sand\n";
+        std::cout << "Example: Sandibc test.sand\n";
         return 0;
     }
     if (std::string(argv[1]) == "--version")
     {
-        std::cout << "bytecode demo 1.7.alpha\n";
+        std::cout << "bytecode demo 1.8.alpha\n";
         return 0;
     }
     if (std::string(argv[1]) == "--copyright")
@@ -184,7 +184,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
    except as required for reasonable and customary use in describing the
    origin of the Work and reproducing the content of the NOTICE file.
 
-7. Disclaimer of Warranty. Unless required by applicable law or
+8. Disclaimer of Warranty. Unless required by applicable law or
    agreed to in writing, Licensor provides the Work (and each
    Contributor provides its Contributions) on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
@@ -249,9 +249,9 @@ limitations under the License.
     }
     if (std::string(argv[1]) == "--help")
     {
-        std::cout << "SandScript interpreter bytecode demo 1.7.alpha\n";
-        std::cout << "Usage: Sandi script.sand\n";
-        std::cout << "Example: Sandi test.sand\n";
+        std::cout << "SandScript interpreter bytecode demo 1.8.alpha\n";
+        std::cout << "Usage: Sandibc script.sand\n";
+        std::cout << "Example: Sandibc test.sand\n";
         std::string help = R"XXX(
 program        ::= { stmt } ;
 
@@ -271,9 +271,19 @@ stmt           ::= if_stmt
                  | incdec_stmt
                  | index_assign_stmt
                  | member_assign_stmt
+                 | switch_stmt
                  | expr_stmt ;
 
 if_stmt        ::= "if" "(" expr ")" block [ "else" if_stmt|block ] ;
+switch_stmt    ::= "switch" "(" expr ")" "begin" { switch_branch } "end" ;
+switch_branch  ::= case_branch
+                 | default_branch ;
+case_branch    ::= "case" case_pattern [ guard_clause ] ":" stmt ;
+default_branch ::= "default" [ guard_clause? ] ":" stmt ;
+guard_clause   ::= "if" expr ;
+case_pattern   ::= pattern_or ;
+pattern_or     ::= pattern_and { ("or" | "||") pattern_and } ;
+pattern_and    ::= primary { ("and" | "&&") primary } ;
 while_stmt     ::= "while" "(" expr ")" block ;
 for_in_stmt    ::= "for" IDENT "in" expr block ;
 

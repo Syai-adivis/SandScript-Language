@@ -395,6 +395,50 @@ void Compiler::compile_stmt(ASTNode *node)
         patch_jmp(jmp_end_pos);
         break;
     }
+    case ASTNode::SWITCH:
+    {
+        auto *subject = node->children[0].get();
+        compile_expr(subject); // stack: subject
+        size_t caseCount = node->children.size() - 1;
+        std::vector<size_t> case_jmp_false_pos;
+        size_t switch_exit_jmp_pos = emit_jmp(OP_JMP);
+        for (size_t ci = 1; ci < node->children.size(); ci++)
+        {
+            auto *caseNode = node->children[ci].get();
+            // caseNode -> CASE_PATTERN
+            // children[0] : pattern(nullptr for default)
+            // children[1] : guard expr
+            // children[2] : body stmt
+            ASTNode *patternNode = caseNode->children[0].get();
+            ASTNode *guardNode = caseNode->children[1].get();
+            ASTNode *bodyNode = caseNode->children[2].get();
+            chunk.emit_op(OP_DUP);
+
+            if (patternNode != nullptr)
+            {
+                compile_expr(patternNode);
+                chunk.emit_op(OP_CMP_EQ);
+            }
+            else
+            {
+                uint32_t cidx = chunk.add_const(RuntimeVal(BigDecimal("1")));
+                chunk.emit_op(OP_PUSH_CONST);
+                chunk.emit_u32(cidx);
+            }
+            compile_expr(guardNode);
+            chunk.emit_op(OP_LOGIC_AND);
+            size_t jmp_next_case = emit_jmp(OP_JMP_IF_FALSE);
+            case_jmp_false_pos.push_back(jmp_next_case);
+            chunk.emit_op(OP_POP);
+            compile_stmt(bodyNode);
+            size_t case_exit = emit_jmp(OP_JMP);
+            patch_jmp(jmp_next_case);
+            case_jmp_false_pos.push_back(case_exit);
+        }
+        chunk.emit_op(OP_POP);
+        patch_jmp(switch_exit_jmp_pos);
+        break;
+    }
     case ASTNode::WHILE:
     {
         LoopPatch lp;
@@ -852,6 +896,12 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
             {
                 std::cerr << "[VM] index‑store need array/dict\n";
             }
+            break;
+        }
+        case OP_DUP:
+        {
+            auto v = peek(0);
+            push(v.clone());
             break;
         }
         case OP_ADD:

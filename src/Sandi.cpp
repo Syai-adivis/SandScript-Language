@@ -4,14 +4,14 @@ int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter 2.beta\n";
+        std::cout << "SandScript interpreter 2.1.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         return 0;
     }
     if (std::string(argv[1]) == "--version")
     {
-        std::cout << "2.beta\n";
+        std::cout << "2.1.beta\n";
         return 0;
     }
     if (std::string(argv[1]) == "--copyright")
@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
     {
         std::string copyright = R"XXX(
 Apache License
-Version 2.0, January 2004
+Version 2.1.0, January 2004
 http://www.apache.org/licenses/
 
 TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
@@ -107,7 +107,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
    on behalf of whom a Contribution has been received by Licensor and
    subsequently incorporated within the Work.
 
-2. Grant of Copyright License. Subject to the terms and conditions of
+2.1. Grant of Copyright License. Subject to the terms and conditions of
    this License, each Contributor hereby grants to You a perpetual,
    worldwide, non-exclusive, no-charge, royalty-free, irrevocable
    copyright license to reproduce, prepare Derivative Works of,
@@ -232,11 +232,11 @@ archives.
 
 Copyright 2026 Syai
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.1.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.1.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -249,7 +249,7 @@ limitations under the License.
     }
     if (std::string(argv[1]) == "--help")
     {
-        std::cout << "SandScript interpreter 2.beta\n";
+        std::cout << "SandScript interpreter 2.1.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         std::string help = R"XXX(
@@ -271,9 +271,19 @@ stmt           ::= if_stmt
                  | incdec_stmt
                  | index_assign_stmt
                  | member_assign_stmt
+                 | switch_stmt
                  | expr_stmt ;
 
 if_stmt        ::= "if" "(" expr ")" block [ "else" if_stmt|block ] ;
+switch_stmt    ::= "switch" "(" expr ")" "begin" { switch_branch } "end" ;
+switch_branch  ::= case_branch
+                 | default_branch ;
+case_branch    ::= "case" case_pattern [ guard_clause ] ":" stmt ;
+default_branch ::= "default" [ guard_clause? ] ":" stmt ;
+guard_clause   ::= "if" expr ;
+case_pattern   ::= pattern_or ;
+pattern_or     ::= pattern_and { ("or" | "||") pattern_and } ;
+pattern_and    ::= primary { ("and" | "&&") primary } ;
 while_stmt     ::= "while" "(" expr ")" block ;
 for_in_stmt    ::= "for" IDENT "in" expr block ;
 

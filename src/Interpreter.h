@@ -650,6 +650,76 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             }
             return RuntimeVal();
         }
+        case ASTNode::SWITCH:
+        {
+            EvalFrame subject_frame = EvalFrame::make_expr_frame();
+            RuntimeVal subject = eval(node->children[0].get(), scope, subject_frame);
+            auto pattern_match = [&](auto &&self, ASTNode *pat, RuntimeVal &subj, Scope *sc, EvalFrame &ef) -> bool
+            {
+                if (pat->kind == ASTNode::BINARY)
+                {
+                    if (pat->val == "&&" || pat->val == "and")
+                    {
+                        auto lhsOk = self(self, pat->children[0].get(), subj, sc, ef);
+                        auto rhsOk = self(self, pat->children[1].get(), subj, sc, ef);
+                        return lhsOk && rhsOk;
+                    }
+                    if (pat->val == "||" || pat->val == "or")
+                    {
+                        auto lhsOk = self(self, pat->children[0].get(), subj, sc, ef);
+                        if (lhsOk)
+                            return true;
+                        auto rhsOk = self(self, pat->children[1].get(), subj, sc, ef);
+                        return rhsOk;
+                    }
+                }
+                EvalFrame tmp = EvalFrame::make_expr_frame();
+                RuntimeVal pv = eval(pat, sc, tmp);
+                return (subj == pv);
+            };
+
+            bool branchFound = false;
+            for (size_t ci = 1; ci < node->children.size(); ci++)
+            {
+                ASTNode *caseNode = node->children[ci].get();
+                if (caseNode->kind != ASTNode::CASE_PATTERN)
+                    continue;
+
+                bool isDefault = (caseNode->val == "default");
+                ASTNode *patternAst = caseNode->children[0].get();
+                ASTNode *guardAst = caseNode->children[1].get();
+                ASTNode *bodyAst = caseNode->children[2].get();
+
+                bool match_ok = false;
+                if (isDefault)
+                {
+                    match_ok = true;
+                }
+                else
+                {
+                    EvalFrame pef = EvalFrame::make_expr_frame();
+                    match_ok = pattern_match(pattern_match, patternAst, subject, scope, pef);
+                }
+                if (!match_ok)
+                    continue;
+                EvalFrame guard_frame = EvalFrame::make_expr_frame();
+                RuntimeVal guard_val = eval(guardAst, scope, guard_frame);
+                auto *gnum = guard_val.as_num();
+                if (!gnum || gnum->value == BigDecimal("0"))
+                {
+                    continue;
+                }
+                eval(bodyAst, scope, frame);
+                branchFound = true;
+                break;
+            }
+            (void)branchFound;
+            return RuntimeVal();
+        }
+        case ASTNode::CASE_PATTERN:
+        {
+            return RuntimeVal();
+        }
         case ASTNode::RANGE:
         {
             EvalFrame s_frame = EvalFrame::make_expr_frame();
@@ -983,7 +1053,6 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
         case ASTNode::CALL:
         {
             size_t ln = node->line;
-            // 内置函数
             if (node->val == "output")
             {
                 for (auto &child : node->children)
