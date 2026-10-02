@@ -1,7 +1,7 @@
 #ifndef RUNTIME_VALUE_H
 #define RUNTIME_VALUE_H
 #include "includes.h"
-const int BD_DIV_PRECISION = 50;
+int BD_DIV_PRECISION = 50;
 
 struct BigDecimal
 {

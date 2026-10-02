@@ -245,6 +245,80 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             }
             return p->clone();
         }
+        case ASTNode::NAMESPACE_DEF:
+        {
+            std::string ns_name = node->val;
+            size_t ln = node->line;
+            auto ns_obj = std::make_shared<ObjectInstance>(nullptr, std::unordered_map<std::string, RuntimeVal>{});
+            RuntimeVal ns_val(ns_obj);
+            Scope ns_scope(scope);
+            EvalFrame ns_frame = frame.make_child();
+            for (auto &stmt : node->children)
+            {
+                ASTNode *s = stmt.get();
+                if (s->kind == ASTNode::ASSIGN)
+                {
+                    EvalFrame ef = EvalFrame::make_expr_frame();
+                    auto val = eval(s->children[0].get(), &ns_scope, ef);
+                    std::string ident = s->val;
+                    ns_obj->members[ident] = std::move(val);
+                    continue;
+                }
+                if (s->kind == ASTNode::FUNC_DEF)
+                {
+                    std::string fname = s->val;
+                    size_t paramCnt = s->children.size() - 1;
+                    std::vector<std::string> params;
+                    for (size_t i = 0; i < paramCnt; i++)
+                        params.push_back(s->children[i]->val);
+                    ASTNode *body = s->children.back().get();
+                    FuncT ft = {params, body};
+                    ns_obj->members[fname] = RuntimeVal(std::move(ft));
+                    continue;
+                }
+                if (s->kind == ASTNode::CLASS_DEF)
+                {
+                    auto meta = std::make_shared<ClassMeta>();
+                    meta->name = s->val;
+                    meta->super_class_name = s->val2;
+                    meta->super_meta = resolve_superclass(meta->super_class_name, &ns_scope, s->line);
+
+                    for (auto &child : s->children)
+                    {
+                        if (child->kind != ASTNode::FUNC_DEF)
+                            continue;
+                        std::string tag = child->val;
+                        auto sep = tag.find('|');
+                        std::string fname = tag.substr(0, sep);
+                        std::string mode = tag.substr(sep + 1);
+                        FuncT ft;
+                        std::vector<std::string> params;
+                        size_t paramCnt = child->children.size() - 1;
+                        for (size_t i = 0; i < paramCnt; i++)
+                            params.push_back(child->children[i]->val);
+                        auto body = child->children.back().get();
+                        ft = {params, body};
+                        if (mode == "instance")
+                        {
+                            meta->instance_methods[fname] = ft;
+                        }
+                        else if (mode == "static")
+                        {
+                            meta->static_methods[fname] = ft;
+                        }
+                    }
+                    std::string cls_name = s->val;
+                    ns_obj->members[cls_name] = RuntimeVal(meta);
+                    ns_scope.set(cls_name, RuntimeVal(meta));
+                    continue;
+                }
+                eval(s, &ns_scope, ns_frame);
+                if (ns_frame.has_return || ns_frame.break_flag || ns_frame.continue_flag)
+                    break;
+            }
+            scope->set(ns_name, std::move(ns_val));
+            return RuntimeVal();
+        }
         case ASTNode::ASSIGN:
         {
             EvalFrame expr_frame = EvalFrame::make_expr_frame();
@@ -556,7 +630,6 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
         }
         case ASTNode::IF:
         {
-            // IF条件是表达式，使用expr‑frame
             EvalFrame cond_frame = EvalFrame::make_expr_frame();
             auto cond = eval(node->children[0].get(), scope, cond_frame);
             auto *condnum = cond.as_num();
@@ -579,7 +652,6 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
         {
             for (;;)
             {
-                // while条件：表达式临时帧
                 EvalFrame cond_frame = EvalFrame::make_expr_frame();
                 auto cond = eval(node->children[0].get(), scope, cond_frame);
                 auto *condnum = cond.as_num();
@@ -1278,6 +1350,100 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     std::cerr << "[" << ln << "] Runtime error: len() expects array or string\n";
                     return RuntimeVal();
                 }
+            }
+            if (node->val == "pi")
+            {
+                if (!node->children.empty())
+                {
+                    std::cerr << "[" << ln << "] Runtime error: pi() takes no arguments\n";
+                    return RuntimeVal();
+                }
+                return RuntimeVal(BigDecimal("3.14159265358979323846264338327950288419716939937510"));
+            }
+            if (node->val == "sqrt")
+            {
+                if (node->children.size() != 1)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: sqrt() expects exactly one argument\n";
+                    return RuntimeVal();
+                }
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                auto arg = eval(node->children[0].get(), scope, arg_frame);
+                auto *numptr = arg.as_num();
+                if (!numptr)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: sqrt() argument must be number\n";
+                    return RuntimeVal();
+                }
+                if (numptr->value.compare(BigDecimal("0")) < 0)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: sqrt() negative input\n";
+                    return RuntimeVal();
+                }
+                double d = std::stod(numptr->value.to_string());
+                double res = std::sqrt(d);
+                return RuntimeVal(BigDecimal(std::to_string(res)));
+            }
+            if (node->val == "abs")
+            {
+                if (node->children.size() != 1)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: abs() expects exactly one argument\n";
+                    return RuntimeVal();
+                }
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                auto arg = eval(node->children[0].get(), scope, arg_frame);
+                auto *numptr = arg.as_num();
+                if (!numptr)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: abs() argument must be number\n";
+                    return RuntimeVal();
+                }
+                BigDecimal v = numptr->value;
+                v.negative = false;
+                return RuntimeVal(std::move(v));
+            }
+            if (node->val == "pow")
+            {
+                if (node->children.size() != 2)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: pow() expects exactly two arguments(base, exp)\n";
+                    return RuntimeVal();
+                }
+                EvalFrame a_frame = EvalFrame::make_expr_frame();
+                auto arg0 = eval(node->children[0].get(), scope, a_frame);
+                EvalFrame b_frame = EvalFrame::make_expr_frame();
+                auto arg1 = eval(node->children[1].get(), scope, b_frame);
+                auto *base_ptr = arg0.as_num();
+                auto *exp_ptr = arg1.as_num();
+                if (!base_ptr || !exp_ptr)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: pow() arguments must be number\n";
+                    return RuntimeVal();
+                }
+                double base = std::stod(base_ptr->value.to_string());
+                double exp = std::stod(exp_ptr->value.to_string());
+                double res = std::pow(base, exp);
+                return RuntimeVal(BigDecimal(std::to_string(res)));
+            }
+            if (node->val == "cbrt")
+            {
+                if (node->children.size() != 1)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: cbrt() expects exactly one argument\n";
+                    return RuntimeVal();
+                }
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                auto arg = eval(node->children[0].get(), scope, arg_frame);
+                auto *numptr = arg.as_num();
+                if (!numptr)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: cbrt() argument must be number\n";
+                    return RuntimeVal();
+                }
+                double d = std::stod(numptr->value.to_string());
+                double res = std::cbrt(d);
+                return RuntimeVal(BigDecimal(std::to_string(res)));
             }
             if (node->val == "eBuddha")
             {

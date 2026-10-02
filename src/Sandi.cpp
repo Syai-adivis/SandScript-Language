@@ -2,16 +2,29 @@
 #include "prepross.h"
 int main(int argc, char *argv[])
 {
+    int program = 1;
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter 2.1.beta\n";
+        std::cout << "SandScript interpreter 2.2.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         return 0;
     }
     if (std::string(argv[1]) == "--version")
     {
-        std::cout << "2.1.beta\n";
+        std::cout << "2.2.beta\n";
+        return 0;
+    }
+    if (std::string(argv[1]) == "--set_BD_DEV_PRECISION")
+    {
+        if (argc < 3)
+        {
+            std::cerr << "Error: --set_BD_DEV_PRECISION requires an integer argument\n";
+            return 1;
+        }
+        int precision = std::stoi(argv[2]);
+        BD_DIV_PRECISION = precision;
+        program = 3;
         return 0;
     }
     if (std::string(argv[1]) == "--copyright")
@@ -249,7 +262,7 @@ limitations under the License.
     }
     if (std::string(argv[1]) == "--help")
     {
-        std::cout << "SandScript interpreter 2.1.beta\n";
+        std::cout << "SandScript interpreter 2.2.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         std::string help = R"XXX(
@@ -260,6 +273,7 @@ stmt           ::= if_stmt
                  | for_in_stmt
                  | func_def_stmt
                  | class_def_stmt
+                 | namespace_stmt
                  | import_stmt
                  | return_stmt
                  | break_stmt
@@ -274,6 +288,7 @@ stmt           ::= if_stmt
                  | switch_stmt
                  | expr_stmt ;
 
+namespace_stmt ::= "namespace" IDENT "begin" { stmt } "end" ;
 if_stmt        ::= "if" "(" expr ")" block [ "else" if_stmt|block ] ;
 switch_stmt    ::= "switch" "(" expr ")" "begin" { switch_branch } "end" ;
 switch_branch  ::= case_branch
@@ -357,10 +372,10 @@ non_ascii      ::= #x80 ... #xFFFF ;
         std::cout << help << "\n";
         return 0;
     }
-    std::ifstream fin(argv[1]);
+    std::ifstream fin(argv[program]);
     if (!fin.is_open())
     {
-        std::cerr << "Error: cannot open file " << argv[1] << "\n";
+        std::cerr << "Error: cannot open file " << argv[program] << "\n";
         return 1;
     }
     std::stringstream buffer;

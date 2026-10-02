@@ -35,6 +35,7 @@ public:
         MEMBER_ASSIGN,
         SWITCH,
         CASE_PATTERN,
+        NAMESPACE_DEF,
         LAMBDA_EXPR
     } kind;
     std::vector<std::unique_ptr<ASTNode>> children;
@@ -105,6 +106,7 @@ enum TokenType
     T_SWITCH,
     T_CASE,
     T_DEFAULT,
+    T_NAMESPACE,
     DOT
 };
 struct Token
@@ -247,6 +249,8 @@ struct Lexer
             t = T_CASE;
         else if (word == "default")
             t = T_DEFAULT;
+        else if (word == "namespace")
+            t = T_NAMESPACE;
         return Token{t, word, start, ln};
     }
     Token read_num()
@@ -507,6 +511,7 @@ struct Parser
     std::unique_ptr<ASTNode> parse_lambda();
     std::unique_ptr<ASTNode> parse_case_pattern_expr();
     std::unique_ptr<ASTNode> parse_switch();
+    std::unique_ptr<ASTNode> parse_namespace();
 };
 std::unique_ptr<ASTNode> Parser::parse_program()
 {
@@ -716,6 +721,8 @@ std::unique_ptr<ASTNode> Parser::parse_stmt()
             return wrap;
         }
     }
+    case T_NAMESPACE:
+        return parse_namespace();
     default:
     {
         auto e = parse_expr();
@@ -727,6 +734,24 @@ std::unique_ptr<ASTNode> Parser::parse_stmt()
     }
     }
 }
+std::unique_ptr<ASTNode> Parser::parse_namespace()
+{
+    size_t ln = tok.line;
+    next_tok();
+    std::string ns_name = tok.val;
+    expect(IDENT);
+    expect(T_BEGIN);
+    auto ns_node = std::make_unique<ASTNode>(ASTNode::NAMESPACE_DEF);
+    ns_node->val = ns_name;
+    ns_node->line = ln;
+    auto block = parse_block();
+    for(auto &ch : block->children)
+    {
+        ns_node->children.push_back(std::move(ch));
+    }
+    return ns_node;
+}
+
 std::unique_ptr<ASTNode> Parser::parse_case_pattern_expr()
 {
     using ParseFn = std::function<std::unique_ptr<ASTNode>()>;
