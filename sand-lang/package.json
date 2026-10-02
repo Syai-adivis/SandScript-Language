@@ -2,7 +2,7 @@
     "name": "sand-lang",
     "displayName": "Sand Language",
     "description": "Sand script language support",
-    "version": "0.0.6",
+    "version": "0.0.7",
     "engines": {
         "vscode": "^1.80.0"
     },
