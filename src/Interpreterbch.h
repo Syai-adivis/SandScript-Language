@@ -1,5 +1,4 @@
 #include "analyzer.h"
-
 static bool safe_to_size_t(const BigDecimal &num, size_t &out)
 {
     if (num.negative)
@@ -16,7 +15,6 @@ static bool safe_to_size_t(const BigDecimal &num, size_t &out)
         return false;
     }
 }
-
 template <typename MapT>
 auto map_find_const(MapT &m, const typename MapT::key_type &key)
 {
@@ -27,7 +25,6 @@ auto map_find_const(MapT &m, const typename MapT::key_type &key)
     }
     return m.end();
 }
-
 enum OpCode : uint8_t
 {
     OP_NOP,
@@ -61,8 +58,8 @@ enum OpCode : uint8_t
     OP_CALL,         // u32 argCount
     OP_MEMBER_CALL,  // u32 argCount
     OP_RETURN,
-    OP_BREAK,     /* extra */
-    OP_CONTINUE,  /* extra */
+    OP_BREAK,
+    OP_CONTINUE,
     OP_ARRAY_LIT, // u32 elemCount
     OP_DICT_LIT,  // u32 pairCount
     OP_NEW_OBJ,   // u32 argCount
@@ -74,19 +71,19 @@ enum OpCode : uint8_t
     OP_COMPOUND_MUL,
     OP_COMPOUND_DIV,
     OP_FORIN_ITER, // u32 varNameIdx
-    OP_CLASS_META, // u32 nameIdx, u32 superIdx, u32 methodCount
+    OP_CLASS_META, // u32 nameIdx, u32 superIdx, u32 methodCount, [modeIdx,fnameIdx,closureIdx]*N
     OP_SWITCH,     // u32 caseCount
     OP_CASE_PATTERN,
     OP_IMPORT,
+    OP_PUSH_LOOP,
+    OP_POP_LOOP,
     OP_HALT
 };
-
 struct ByteCodeChunk
 {
     std::vector<uint8_t> code;
     std::vector<RuntimeVal> constant_pool;
     std::vector<std::string> string_pool;
-
     void emit_op(OpCode op)
     {
         code.push_back(static_cast<uint8_t>(op));
@@ -127,27 +124,23 @@ struct ByteCodeChunk
     }
     size_t pc() const { return code.size(); }
 };
-
 struct VMClosure
 {
     ByteCodeChunk chunk;
     std::vector<std::string> params;
     int variadicIndex = -1;
 };
-
 struct LoopPatch
 {
     size_t continue_pc;
     size_t break_patch;
 };
-
 struct EvalFrame
 {
     bool has_return = false;
     RuntimeVal ret_val;
     bool break_flag = false;
     bool continue_flag = false;
-
     EvalFrame make_child() const
     {
         EvalFrame cf{};
@@ -166,7 +159,6 @@ struct EvalFrame
         continue_flag = false;
     }
 };
-
 struct VMFrame
 {
     Scope scope;
@@ -178,12 +170,10 @@ struct VMFrame
     RuntimeVal forin_array;
     size_t forin_index = 0;
 };
-
 struct Compiler
 {
     ByteCodeChunk chunk;
     std::vector<LoopPatch> loop_stack;
-
     void compile(ASTNode *node);
     void compile_stmt(ASTNode *node);
     void compile_expr(ASTNode *node);
@@ -192,28 +182,23 @@ struct Compiler
     void patch_jmp(size_t patch_pos, size_t target_pc);
     VMClosure compile_function(ASTNode *funcNode);
 };
-
 struct VM
 {
     ByteCodeChunk *chunk = nullptr;
     std::vector<RuntimeVal> stack;
     std::vector<VMFrame> frame_stack;
+    std::vector<LoopPatch> vm_loop_stack;
     Interpreter *host_interp = nullptr;
-
     static RuntimeVal wrap_closure(VMClosure clos);
     static VMClosure *unwrap_closure(RuntimeVal &v);
-
     RuntimeVal pop();
     RuntimeVal &peek(size_t off = 0);
     void push(RuntimeVal v);
-
     uint8_t read_u8();
     uint32_t read_u32();
     int32_t read_i32();
-
     RuntimeVal run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp);
 };
-
 struct Interpreter
 {
     Scope global;

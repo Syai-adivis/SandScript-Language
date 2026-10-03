@@ -757,7 +757,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 if (caseNode->kind != ASTNode::CASE_PATTERN)
                     continue;
 
-                bool isDefault = (caseNode->val == "default");
+                bool isDefault = (caseNode->val == "default" || caseNode->val == "zhumipingan");
                 ASTNode *patternAst = caseNode->children[0].get();
                 ASTNode *guardAst = caseNode->children[1].get();
                 ASTNode *bodyAst = caseNode->children[2].get();

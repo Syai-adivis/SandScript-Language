@@ -1,7 +1,20 @@
 #include "Interpreterbch.h"
-
+#include <memory>
 namespace
 {
+    static std::unordered_map<uint64_t, std::weak_ptr<VMClosure>> closure_pool_global;
+
+    static void closure_pool_gc()
+    {
+        for (auto it = closure_pool_global.begin(); it != closure_pool_global.end();)
+        {
+            if (it->second.expired())
+                it = closure_pool_global.erase(it);
+            else
+                ++it;
+        }
+    }
+
     std::shared_ptr<ClassMeta> get_closure_wrapper_meta()
     {
         static std::shared_ptr<ClassMeta> meta;
@@ -12,7 +25,6 @@ namespace
         }
         return meta;
     }
-    static std::unordered_map<uint64_t, std::shared_ptr<VMClosure>> closure_pool_global;
 }
 
 RuntimeVal VM::wrap_closure(VMClosure clos)
@@ -21,7 +33,10 @@ RuntimeVal VM::wrap_closure(VMClosure clos)
     std::shared_ptr<VMClosure> heap_clos = std::make_shared<VMClosure>(std::move(clos));
     uint64_t raw = reinterpret_cast<uint64_t>(heap_clos.get());
     inst->members["__closure_ptr"] = RuntimeVal(std::to_string(raw));
-    closure_pool_global[raw] = std::move(heap_clos);
+
+    closure_pool_gc();
+    closure_pool_global[raw] = heap_clos;
+
     return RuntimeVal(inst);
 }
 
@@ -49,7 +64,13 @@ VMClosure *VM::unwrap_closure(RuntimeVal &v)
     auto pit = closure_pool_global.find(addr);
     if (pit == closure_pool_global.end())
         return nullptr;
-    return pit->second.get();
+    auto sp = pit->second.lock();
+    if (!sp)
+    {
+        closure_pool_global.erase(pit);
+        return nullptr;
+    }
+    return sp.get();
 }
 
 RuntimeVal *Interpreter::get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *scope, EvalFrame &expr_frame, size_t line)
@@ -220,12 +241,10 @@ VMClosure Compiler::compile_function(ASTNode *funcNode)
     }
     ASTNode *body = funcNode->children.back().get();
     subcomp.compile_stmt(body);
-
     uint32_t nilIdx = subcomp.chunk.add_const(RuntimeVal());
     subcomp.chunk.emit_op(OP_PUSH_CONST);
     subcomp.chunk.emit_u32(nilIdx);
     subcomp.chunk.emit_op(OP_RETURN);
-
     clos.chunk = std::move(subcomp.chunk);
     return clos;
 }
@@ -269,18 +288,39 @@ void Compiler::compile_stmt(ASTNode *node)
     {
         uint32_t nameIdx = chunk.add_string(node->val);
         uint32_t superIdx = chunk.add_string(node->val2);
-        uint32_t methodCount = static_cast<uint32_t>(node->children.size());
+        std::vector<uint32_t> methodConstIndices;
+
         for (auto &child : node->children)
         {
             if (child->kind != ASTNode::FUNC_DEF)
                 continue;
-            uint64_t ptr = reinterpret_cast<uint64_t>(child.get());
-            chunk.add_const(RuntimeVal(std::to_string(ptr)));
+            VMClosure clos = compile_function(child.get());
+            RuntimeVal closureObj = VM::wrap_closure(std::move(clos));
+
+            std::string tag = child->val;
+            size_t sep = tag.find('|');
+            std::string fname = tag.substr(0, sep);
+            std::string mode = tag.substr(sep + 1);
+
+            uint32_t mid1 = chunk.add_string(mode);
+            uint32_t mid2 = chunk.add_string(fname);
+            uint32_t mid3 = chunk.add_const(std::move(closureObj));
+            methodConstIndices.push_back(mid1);
+            methodConstIndices.push_back(mid2);
+            methodConstIndices.push_back(mid3);
         }
+
+        uint32_t methodCount = static_cast<uint32_t>(methodConstIndices.size() / 3U);
+        for (auto cidx : methodConstIndices)
+        {
+            chunk.emit_u32(cidx);
+        }
+
         chunk.emit_op(OP_CLASS_META);
         chunk.emit_u32(nameIdx);
         chunk.emit_u32(superIdx);
         chunk.emit_u32(methodCount);
+
         uint32_t storeIdx = chunk.add_string(node->val);
         chunk.emit_op(OP_STORE_VAR);
         chunk.emit_u32(storeIdx);
@@ -398,22 +438,17 @@ void Compiler::compile_stmt(ASTNode *node)
     case ASTNode::SWITCH:
     {
         auto *subject = node->children[0].get();
-        compile_expr(subject); // stack: subject
+        compile_expr(subject);
         size_t caseCount = node->children.size() - 1;
         std::vector<size_t> case_jmp_false_pos;
         size_t switch_exit_jmp_pos = emit_jmp(OP_JMP);
         for (size_t ci = 1; ci < node->children.size(); ci++)
         {
             auto *caseNode = node->children[ci].get();
-            // caseNode -> CASE_PATTERN
-            // children[0] : pattern(nullptr for default)
-            // children[1] : guard expr
-            // children[2] : body stmt
             ASTNode *patternNode = caseNode->children[0].get();
             ASTNode *guardNode = caseNode->children[1].get();
             ASTNode *bodyNode = caseNode->children[2].get();
             chunk.emit_op(OP_DUP);
-
             if (patternNode != nullptr)
             {
                 compile_expr(patternNode);
@@ -444,18 +479,22 @@ void Compiler::compile_stmt(ASTNode *node)
         LoopPatch lp;
         lp.continue_pc = chunk.pc();
         lp.break_patch = 0;
+        chunk.emit_op(OP_PUSH_LOOP);
+        loop_stack.push_back(lp);
+
         compile_expr(node->children[0].get());
         size_t jmp_false = emit_jmp(OP_JMP_IF_FALSE);
-        loop_stack.push_back(lp);
         compile_stmt(node->children[1].get());
         size_t cont_jmp = emit_jmp(OP_JMP);
         patch_jmp(cont_jmp, lp.continue_pc);
+
         LoopPatch actual_lp = loop_stack.back();
         if (actual_lp.break_patch != 0)
         {
             patch_jmp(actual_lp.break_patch);
         }
         loop_stack.pop_back();
+        chunk.emit_op(OP_POP_LOOP);
         patch_jmp(jmp_false);
         break;
     }
@@ -466,7 +505,9 @@ void Compiler::compile_stmt(ASTNode *node)
         LoopPatch lp;
         lp.continue_pc = chunk.pc();
         lp.break_patch = 0;
+        chunk.emit_op(OP_PUSH_LOOP);
         loop_stack.push_back(lp);
+
         chunk.emit_op(OP_FORIN_ITER);
         chunk.emit_u32(varIdx);
         size_t jmp_end = emit_jmp(OP_JMP_IF_FALSE);
@@ -480,6 +521,7 @@ void Compiler::compile_stmt(ASTNode *node)
             patch_jmp(actual_lp.break_patch);
         }
         loop_stack.pop_back();
+        chunk.emit_op(OP_POP_LOOP);
         patch_jmp(jmp_end);
         break;
     }
@@ -492,6 +534,7 @@ void Compiler::compile_stmt(ASTNode *node)
         auto &lp = loop_stack.back();
         size_t jp = emit_jmp(OP_JMP);
         lp.break_patch = jp;
+        chunk.emit_op(OP_BREAK);
         break;
     }
     case ASTNode::CONTINUE:
@@ -499,6 +542,7 @@ void Compiler::compile_stmt(ASTNode *node)
         auto &lp = loop_stack.back();
         size_t jp = emit_jmp(OP_JMP);
         patch_jmp(jp, lp.continue_pc);
+        chunk.emit_op(OP_CONTINUE);
         break;
     }
     case ASTNode::LIT_NUM:
@@ -747,6 +791,7 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
     chunk = &bc;
     stack.clear();
     frame_stack.clear();
+    vm_loop_stack.clear();
 
     VMFrame top_frame;
     top_frame.scope.parent = global_scope;
@@ -759,9 +804,8 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
         auto &fr = frame_stack.back();
         if (fr.pc >= fr.chunk->code.size())
             break;
-
         OpCode op = static_cast<OpCode>(read_u8());
-        // std::cerr << "[DEBUG] pc=" << fr.pc << " stack_size=" << stack.size() << " op=" << (int)op << "\n";
+
         switch (op)
         {
         case OP_PUSH_CONST:
@@ -773,6 +817,22 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
         case OP_POP:
             pop();
             break;
+        case OP_DUP:
+        {
+            auto v = peek(0);
+            push(v.clone());
+            break;
+        }
+        case OP_SWAP:
+        {
+            auto a = std::move(stack[stack.size() - 1]);
+            auto b = std::move(stack[stack.size() - 2]);
+            stack.pop_back();
+            stack.pop_back();
+            push(std::move(a));
+            push(std::move(b));
+            break;
+        }
         case OP_LOAD_VAR:
         {
             uint32_t sid = read_u32();
@@ -896,12 +956,6 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
             {
                 std::cerr << "[VM] index‑store need array/dict\n";
             }
-            break;
-        }
-        case OP_DUP:
-        {
-            auto v = peek(0);
-            push(v.clone());
             break;
         }
         case OP_ADD:
@@ -1112,6 +1166,43 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
             }
             break;
         }
+        case OP_PUSH_LOOP:
+        {
+            LoopPatch lp;
+            lp.continue_pc = fr.pc;
+            lp.break_patch = 0;
+            vm_loop_stack.push_back(lp);
+            break;
+        }
+        case OP_POP_LOOP:
+        {
+            if (!vm_loop_stack.empty())
+                vm_loop_stack.pop_back();
+            break;
+        }
+        case OP_BREAK:
+        {
+            if (vm_loop_stack.empty())
+            {
+                std::cerr << "[VM] break outside loop\n";
+                break;
+            }
+            vm_loop_stack.pop_back();
+            int32_t off = read_i32();
+            fr.pc += off;
+            break;
+        }
+        case OP_CONTINUE:
+        {
+            if (vm_loop_stack.empty())
+            {
+                std::cerr << "[VM] continue outside loop\n";
+                break;
+            }
+            int32_t off = read_i32();
+            fr.pc += off;
+            break;
+        }
         case OP_FORIN_ITER:
         {
             uint32_t varIdx = read_u32();
@@ -1153,28 +1244,32 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
             meta->name = className;
             meta->super_class_name = superName;
             meta->super_meta = host_interp->resolve_superclass(superName, &fr.scope, 0);
+
             for (uint32_t m = 0; m < methodCount; m++)
             {
-                auto val = pop();
-                uint64_t ptr;
-                std::istringstream iss(val.as_str()->value);
-                iss >> ptr;
-                ASTNode *funcNode = reinterpret_cast<ASTNode *>(ptr);
-                if (!funcNode || funcNode->kind != ASTNode::FUNC_DEF)
+                uint32_t modeIdx = read_u32();
+                uint32_t fnameIdx = read_u32();
+                uint32_t closConstIdx = read_u32();
+
+                std::string mode = fr.chunk->string_pool[modeIdx];
+                std::string fname = fr.chunk->string_pool[fnameIdx];
+                RuntimeVal closObj = fr.chunk->constant_pool[closConstIdx].clone();
+                VMClosure *pClos = VM::unwrap_closure(closObj);
+                if (!pClos)
                     continue;
-                std::string tag = funcNode->val;
-                size_t sep = tag.find('|');
-                std::string fname = tag.substr(0, sep);
-                std::string mode = tag.substr(sep + 1);
+
                 FuncT ft;
-                size_t pcnt = funcNode->children.size() - 1;
-                for (size_t i = 0; i < pcnt; i++)
-                    ft.first.push_back(funcNode->children[i]->val);
-                ft.second = funcNode->children.back().get();
+                ft.first = pClos->params;
+                ft.second = nullptr;
+
                 if (mode == "instance")
-                    meta->instance_methods[fname] = ft;
+                {
+                    meta->instance_methods[fname] = std::move(ft);
+                }
                 else if (mode == "static")
-                    meta->static_methods[fname] = ft;
+                {
+                    meta->static_methods[fname] = std::move(ft);
+                }
             }
             push(RuntimeVal(meta));
             break;
@@ -1186,7 +1281,6 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
             if (funcVal.type() == RtKind::STRING)
             {
                 std::string fname = funcVal.as_str()->value;
-                // output
                 if (fname == "output")
                 {
                     std::vector<RuntimeVal> tmp;
@@ -1205,7 +1299,6 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
                     push(RuntimeVal());
                     break;
                 }
-                // outputLine
                 if (fname == "outputLine")
                 {
                     std::vector<RuntimeVal> tmp;
@@ -1313,7 +1406,6 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
                     push(RuntimeVal(s));
                     break;
                 }
-                // len
                 if (fname == "len")
                 {
                     if (argCnt != 1)
@@ -1338,7 +1430,6 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
                     }
                     break;
                 }
-                // conc
                 if (fname == "conc")
                 {
                     if (argCnt != 2)
@@ -1372,7 +1463,110 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
                     push(RuntimeVal(std::move(res)));
                     break;
                 }
-                // buddha
+                if (fname == "pi")
+                {
+                    if (argCnt != 0)
+                    {
+                        std::cerr << "[VM] pi() takes no arguments\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    push(RuntimeVal(BigDecimal("3.14159265358979323846264338327950288419716939937510")));
+                    break;
+                }
+                if (fname == "sqrt")
+                {
+                    if (argCnt != 1)
+                    {
+                        std::cerr << "[VM] sqrt() expects exactly one argument\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    auto arg = pop();
+                    auto *numptr = arg.as_num();
+                    if (!numptr)
+                    {
+                        std::cerr << "[VM] sqrt() argument must be number\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    if (numptr->value.compare(BigDecimal("0")) < 0)
+                    {
+                        std::cerr << "[VM] sqrt() negative input\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    double d = std::stod(numptr->value.to_string());
+                    double res = std::sqrt(d);
+                    push(RuntimeVal(BigDecimal(std::to_string(res))));
+                    break;
+                }
+                if (fname == "abs")
+                {
+                    if (argCnt != 1)
+                    {
+                        std::cerr << "[VM] abs() expects exactly one argument\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    auto arg = pop();
+                    auto *numptr = arg.as_num();
+                    if (!numptr)
+                    {
+                        std::cerr << "[VM] abs() argument must be number\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    BigDecimal v = numptr->value;
+                    v.negative = false;
+                    push(RuntimeVal(std::move(v)));
+                    break;
+                }
+                if (fname == "pow")
+                {
+                    if (argCnt != 2)
+                    {
+                        std::cerr << "[VM] pow() expects exactly two arguments(base, exp)\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    auto arg1 = pop();
+                    auto arg0 = pop();
+                    auto *base_ptr = arg0.as_num();
+                    auto *exp_ptr = arg1.as_num();
+                    if (!base_ptr || !exp_ptr)
+                    {
+                        std::cerr << "[VM] pow() arguments must be number\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    double base = std::stod(base_ptr->value.to_string());
+                    double exp = std::stod(exp_ptr->value.to_string());
+                    double res = std::pow(base, exp);
+                    push(RuntimeVal(BigDecimal(std::to_string(res))));
+                    break;
+                }
+                if (fname == "cbrt")
+                {
+                    if (argCnt != 1)
+                    {
+                        std::cerr << "[VM] cbrt() expects exactly one argument\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    auto arg = pop();
+                    auto *numptr = arg.as_num();
+                    if (!numptr)
+                    {
+                        std::cerr << "[VM] cbrt() argument must be number\n";
+                        push(RuntimeVal());
+                        break;
+                    }
+                    double d = std::stod(numptr->value.to_string());
+                    double res = std::cbrt(d);
+                    push(RuntimeVal(BigDecimal(std::to_string(res))));
+                    break;
+                }
                 if (fname == "eBuddha")
                 {
                     std::string eB = R"XXX(
@@ -1411,7 +1605,7 @@ Eastern mysticism:
                     break;
                 }
             }
-            VMClosure *pClos = unwrap_closure(funcVal);
+            VMClosure *pClos = VM::unwrap_closure(funcVal);
             if (pClos != nullptr)
             {
                 std::vector<RuntimeVal> args;
@@ -1421,11 +1615,11 @@ Eastern mysticism:
                 newFrame.scope.parent = &fr.scope;
                 newFrame.chunk = &pClos->chunk;
                 newFrame.pc = 0;
-                int variadicIdx = pClos->variadicIndex;
+                int variadicIndex = pClos->variadicIndex;
                 Array restArray;
                 for (size_t i = 0; i < args.size(); i++)
                 {
-                    if (variadicIdx != -1 && (int)i >= variadicIdx)
+                    if (variadicIndex != -1 && (int)i >= variadicIndex)
                     {
                         restArray.push_back(std::move(args[i]));
                     }
@@ -1434,12 +1628,12 @@ Eastern mysticism:
                         newFrame.scope.set(pClos->params[i], std::move(args[i]));
                     }
                 }
-                if (variadicIdx != -1)
+                if (variadicIndex != -1)
                 {
-                    std::string restParam = pClos->params[variadicIdx];
+                    std::string restParam = pClos->params[variadicIndex];
                     newFrame.scope.set(restParam, RuntimeVal(std::move(restArray)));
                 }
-                for (int i = (int)args.size(); i < variadicIdx; i++)
+                for (int i = (int)args.size(); i < variadicIndex; i++)
                 {
                     newFrame.scope.set(pClos->params[i], RuntimeVal());
                 }
@@ -1493,11 +1687,6 @@ Eastern mysticism:
             push(retv.clone());
             break;
         }
-        case OP_BREAK:
-        case OP_CONTINUE:
-            /* extra */
-            std::cerr << "[VM] unreachable opcode break/continue\n";
-            goto vm_exit;
         case OP_ARRAY_LIT:
         {
             uint32_t elemCnt = read_u32();

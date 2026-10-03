@@ -249,6 +249,8 @@ struct Lexer
             t = T_CASE;
         else if (word == "default")
             t = T_DEFAULT;
+        else if (word == "zhumipingan")
+            t = T_DEFAULT;
         else if (word == "namespace")
             t = T_NAMESPACE;
         return Token{t, word, start, ln};
@@ -745,7 +747,7 @@ std::unique_ptr<ASTNode> Parser::parse_namespace()
     ns_node->val = ns_name;
     ns_node->line = ln;
     auto block = parse_block();
-    for(auto &ch : block->children)
+    for (auto &ch : block->children)
     {
         ns_node->children.push_back(std::move(ch));
     }
@@ -1304,7 +1306,7 @@ std::unique_ptr<ASTNode> Parser::parse_call_or_index(const std::string &name, si
         v->line = ln;
         node = std::move(v);
     }
-    // 链式成员访问 a.b.c()
+
     while (tok.type == DOT)
     {
         node = parse_member(std::move(node), ln);

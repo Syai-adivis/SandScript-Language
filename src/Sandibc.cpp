@@ -4,14 +4,14 @@ int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter bytecode demo 1.8.alpha";
+        std::cout << "SandScript interpreter bytecode demo 1.9.alpha";
         std::cout << "Usage: Sandibc script.sand\n";
         std::cout << "Example: Sandibc test.sand\n";
         return 0;
     }
     if (std::string(argv[1]) == "--version")
     {
-        std::cout << "bytecode demo 1.8.alpha\n";
+        std::cout << "bytecode demo 1.9.alpha\n";
         return 0;
     }
     if (std::string(argv[1]) == "--copyright")
@@ -249,7 +249,7 @@ limitations under the License.
     }
     if (std::string(argv[1]) == "--help")
     {
-        std::cout << "SandScript interpreter bytecode demo 1.8.alpha\n";
+        std::cout << "SandScript interpreter bytecode demo 1.9.alpha\n";
         std::cout << "Usage: Sandibc script.sand\n";
         std::cout << "Example: Sandibc test.sand\n";
         std::string help = R"XXX(
