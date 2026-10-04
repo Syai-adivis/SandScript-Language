@@ -315,7 +315,21 @@ std::string BigDecimal::to_string() const
 }
 
 class ASTNode;
-using FuncT = std::pair<std::vector<std::string>, ASTNode *>;
+struct FuncParamInfo
+{
+    std::string name;
+    ASTNode *default_expr = nullptr;
+};
+
+using FuncT = std::pair<std::vector<FuncParamInfo>, ASTNode *>;
+
+using SlotFunc = FuncT;
+
+struct SignalSlotTable
+{
+    std::vector<SlotFunc> connections;
+};
+
 struct ClassMeta
 {
     std::string name;
@@ -325,14 +339,17 @@ struct ClassMeta
     std::unordered_map<std::string, FuncT> static_methods;
     ~ClassMeta() = default;
 };
+
 struct ObjectInstance
 {
     std::shared_ptr<ClassMeta> meta;
     std::unordered_map<std::string, struct RuntimeVal> members;
+    SignalSlotTable signalSlots;
     ObjectInstance() = default;
     ObjectInstance(std::shared_ptr<ClassMeta> m, std::unordered_map<std::string, struct RuntimeVal> mem)
         : meta(std::move(m)), members(std::move(mem)) {}
 };
+
 enum class RtKind
 {
     NUMBER,
@@ -455,6 +472,7 @@ struct RuntimeVal
 
 using Array = ArrayValue::Array;
 using Dict = DictValue::Dict;
+
 // ==========================================
 inline NumValue::NumValue(BigDecimal v)
     : RuntimeValueBase(RtKind::NUMBER), value(std::move(v)) {}

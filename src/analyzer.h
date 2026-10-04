@@ -36,6 +36,10 @@ public:
         SWITCH,
         CASE_PATTERN,
         NAMESPACE_DEF,
+        PARAM_DEF,
+        SLOT_CONNECT_EXPR,
+        SLOT_DISCONNECT_EXPR,
+        EMIT_EXPR,
         LAMBDA_EXPR
     } kind;
     std::vector<std::unique_ptr<ASTNode>> children;
@@ -107,6 +111,9 @@ enum TokenType
     T_CASE,
     T_DEFAULT,
     T_NAMESPACE,
+    CONNECT,
+    DISCONNECT,
+    T_EMIT,
     DOT
 };
 struct Token
@@ -253,6 +260,8 @@ struct Lexer
             t = T_DEFAULT;
         else if (word == "namespace")
             t = T_NAMESPACE;
+        else if (word == "emit")
+            t = T_EMIT;
         return Token{t, word, start, ln};
     }
     Token read_num()
@@ -402,6 +411,11 @@ struct Lexer
                 consume();
                 return Token{NEQ, "!=", idx - 2, ln};
             }
+            if (peek() == '>')
+            {
+                consume();
+                return Token{DISCONNECT, "!>", idx - 2, ln};
+            }
             return Token{BANG, "!", idx - 1, ln};
         }
         if (c == '<')
@@ -421,6 +435,11 @@ struct Lexer
             {
                 consume();
                 return Token{GE, ">=", idx - 2, ln};
+            }
+            if (peek() == '>')
+            {
+                consume();
+                return Token{CONNECT, ">>", idx - 2, ln};
             }
             return Token{GT, ">", idx - 1, ln};
         }
@@ -514,6 +533,7 @@ struct Parser
     std::unique_ptr<ASTNode> parse_case_pattern_expr();
     std::unique_ptr<ASTNode> parse_switch();
     std::unique_ptr<ASTNode> parse_namespace();
+    std::unique_ptr<ASTNode> parse_slot_op(std::unique_ptr<ASTNode> lhs, size_t ln);
 };
 std::unique_ptr<ASTNode> Parser::parse_program()
 {
@@ -723,6 +743,15 @@ std::unique_ptr<ASTNode> Parser::parse_stmt()
             return wrap;
         }
     }
+    case T_EMIT:
+    {
+        next_tok();
+        auto n = std::make_unique<ASTNode>(ASTNode::EMIT_EXPR);
+        n->line = tok.line;
+        n->children.push_back(parse_expr());
+        expect(SEMI);
+        return n;
+    }
     case T_NAMESPACE:
         return parse_namespace();
     default:
@@ -752,6 +781,39 @@ std::unique_ptr<ASTNode> Parser::parse_namespace()
         ns_node->children.push_back(std::move(ch));
     }
     return ns_node;
+}
+
+std::unique_ptr<ASTNode> Parser::parse_slot_op(std::unique_ptr<ASTNode> lhs, size_t ln)
+{
+    TokenType op = tok.type;
+    next_tok();
+    std::unique_ptr<ASTNode> node;
+    if (op == CONNECT)
+    {
+        node = std::make_unique<ASTNode>(ASTNode::SLOT_CONNECT_EXPR);
+        node->line = ln;
+        node->children.push_back(std::move(lhs));
+        auto rhs = parse_logic_or();
+        node->children.push_back(std::move(rhs));
+    }
+    else // DISCONNECT (!>)
+    {
+        node = std::make_unique<ASTNode>(ASTNode::SLOT_DISCONNECT_EXPR);
+        node->line = ln;
+        node->children.push_back(std::move(lhs));
+        if (tok.type == IDENT && tok.val == "all")
+        {
+            node->val = "all";
+            next_tok();
+        }
+        else
+        {
+            node->val = "slot";
+            auto rhs = parse_logic_or();
+            node->children.push_back(std::move(rhs));
+        }
+    }
+    return node;
 }
 
 std::unique_ptr<ASTNode> Parser::parse_case_pattern_expr()
@@ -890,7 +952,7 @@ std::unique_ptr<ASTNode> Parser::parse_lambda()
     size_t ln = tok.line;
     next_tok();
     expect(LPAREN);
-    std::vector<std::string> params;
+    std::vector<std::unique_ptr<ASTNode>> paramNodes;
     while (tok.type != RPAREN)
     {
         if (tok.type == DOTDOTDOT)
@@ -900,12 +962,27 @@ std::unique_ptr<ASTNode> Parser::parse_lambda()
             {
                 std::cerr << "[" << tok.line << "] Syntax error: ... requires identifier\n";
             }
-            params.push_back("..." + tok.val);
+            auto pd = std::make_unique<ASTNode>(ASTNode::PARAM_DEF);
+            auto v = std::make_unique<ASTNode>(ASTNode::VAR);
+            v->val = "..." + tok.val;
+            pd->children.push_back(std::move(v));
+            paramNodes.push_back(std::move(pd));
             next_tok();
             break;
         }
-        params.push_back(tok.val);
+        std::string pname = tok.val;
         expect(IDENT);
+        auto pd = std::make_unique<ASTNode>(ASTNode::PARAM_DEF);
+        auto v = std::make_unique<ASTNode>(ASTNode::VAR);
+        v->val = pname;
+        pd->children.push_back(std::move(v));
+        if (tok.type == ASSIGN)
+        {
+            next_tok();
+            auto defExpr = parse_expr();
+            pd->children.push_back(std::move(defExpr));
+        }
+        paramNodes.push_back(std::move(pd));
         if (tok.type == COMMA)
             next_tok();
     }
@@ -929,14 +1006,11 @@ std::unique_ptr<ASTNode> Parser::parse_lambda()
     {
         return std::make_unique<ASTNode>(ASTNode::PROGRAM);
     }
-
     auto node = std::make_unique<ASTNode>(ASTNode::LAMBDA_EXPR);
     node->line = ln;
-    for (auto &p : params)
+    for (auto &pn : paramNodes)
     {
-        auto v = std::make_unique<ASTNode>(ASTNode::VAR);
-        v->val = p;
-        node->children.push_back(std::move(v));
+        node->children.push_back(std::move(pn));
     }
     node->children.push_back(std::move(block));
     return node;
@@ -999,8 +1073,7 @@ std::unique_ptr<ASTNode> Parser::parse_func()
     std::string name = tok.val;
     expect(IDENT);
     expect(LPAREN);
-    std::vector<std::string> params;
-    bool variadic = false;
+    std::vector<std::unique_ptr<ASTNode>> paramNodes;
     while (tok.type != RPAREN)
     {
         if (tok.type == DOTDOTDOT)
@@ -1010,13 +1083,29 @@ std::unique_ptr<ASTNode> Parser::parse_func()
             {
                 std::cerr << "[" << tok.line << "] Syntax error: ... requires identifier\n";
             }
-            params.push_back("..." + tok.val);
-            variadic = true;
+            auto pd = std::make_unique<ASTNode>(ASTNode::PARAM_DEF);
+            auto varNode = std::make_unique<ASTNode>(ASTNode::VAR);
+            varNode->val = "..." + tok.val;
+            pd->children.push_back(std::move(varNode));
+            paramNodes.push_back(std::move(pd));
             next_tok();
             break;
         }
-        params.push_back(tok.val);
+
+        std::string pname = tok.val;
         expect(IDENT);
+        auto pd = std::make_unique<ASTNode>(ASTNode::PARAM_DEF);
+        auto varNode = std::make_unique<ASTNode>(ASTNode::VAR);
+        varNode->val = pname;
+        pd->children.push_back(std::move(varNode));
+
+        if (tok.type == ASSIGN)
+        {
+            next_tok();
+            auto defExpr = parse_expr();
+            pd->children.push_back(std::move(defExpr));
+        }
+        paramNodes.push_back(std::move(pd));
         if (tok.type == COMMA)
             next_tok();
     }
@@ -1025,11 +1114,9 @@ std::unique_ptr<ASTNode> Parser::parse_func()
     auto node = std::make_unique<ASTNode>(ASTNode::FUNC_DEF);
     node->val = name;
     node->line = ln;
-    for (auto &p : params)
+    for (auto &pn : paramNodes)
     {
-        auto vnode = std::make_unique<ASTNode>(ASTNode::VAR);
-        vnode->val = p;
-        node->children.push_back(std::move(vnode));
+        node->children.push_back(std::move(pn));
     }
     node->children.push_back(std::move(body));
     return node;
@@ -1056,7 +1143,15 @@ std::unique_ptr<ASTNode> Parser::parse_block()
         std::cerr << "[" << tok.line << "] Syntax error: missing 'end' for block\n";
     return blk;
 }
-std::unique_ptr<ASTNode> Parser::parse_expr() { return parse_logic_or(); }
+std::unique_ptr<ASTNode> Parser::parse_expr()
+{
+    auto lhs = parse_logic_or();
+    while (tok.type == CONNECT || tok.type == DISCONNECT)
+    {
+        lhs = parse_slot_op(std::move(lhs), tok.line);
+    }
+    return lhs;
+}
 std::unique_ptr<ASTNode> Parser::parse_logic_or()
 {
     auto lhs = parse_logic_and();
@@ -1349,7 +1444,6 @@ std::unique_ptr<ASTNode> Parser::parse_class()
     next_tok();
     std::string cls_name = tok.val;
     expect(IDENT);
-
     std::string super_name;
     if (tok.type == COLON)
     {
@@ -1370,49 +1464,19 @@ std::unique_ptr<ASTNode> Parser::parse_class()
             is_static = true;
             next_tok();
         }
-        expect(T_FUNC);
-        size_t fun_ln = tok.line;
-        std::string fname = tok.val;
-        expect(IDENT);
-        expect(LPAREN);
-        std::vector<std::string> params;
-        bool variadic = false;
-        while (tok.type != RPAREN)
-        {
-            if (tok.type == DOTDOTDOT)
-            {
-                next_tok();
-                if (tok.type != IDENT)
-                {
-                    std::cerr << "[" << tok.line << "] Syntax error: ... requires identifier\n";
-                }
-                params.push_back("..." + tok.val);
-                variadic = true;
-                next_tok();
-                break;
-            }
-            params.push_back(tok.val);
-            expect(IDENT);
-            if (tok.type == COMMA)
-                next_tok();
-        }
-        expect(RPAREN);
+        auto fun_node = parse_func();
+        std::string real_func_name = fun_node->val;
+        fun_node->val = real_func_name + (is_static ? "|static" : "|instance");
 
         if (!is_static)
         {
-            params.insert(params.begin(), "self");
+            auto selfPd = std::make_unique<ASTNode>(ASTNode::PARAM_DEF);
+            auto varSelf = std::make_unique<ASTNode>(ASTNode::VAR);
+            varSelf->val = "self";
+            selfPd->children.push_back(std::move(varSelf));
+            fun_node->children.insert(fun_node->children.begin(), std::move(selfPd));
         }
-        auto body = parse_block();
-        auto fun_node = std::make_unique<ASTNode>(ASTNode::FUNC_DEF);
-        fun_node->val = fname + (is_static ? "|static" : "|instance");
-        fun_node->line = fun_ln;
-        for (auto &p : params)
-        {
-            auto vnode = std::make_unique<ASTNode>(ASTNode::VAR);
-            vnode->val = p;
-            fun_node->children.push_back(std::move(vnode));
-        }
-        fun_node->children.push_back(std::move(body));
+
         cls_node->children.push_back(std::move(fun_node));
     }
     expect(T_END);

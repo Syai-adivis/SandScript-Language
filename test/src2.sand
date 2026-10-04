@@ -1,0 +1,52 @@
+class A begin
+    func init(v=100) begin
+        self.val = v;
+    end
+    func calc(a,b=5) begin
+        return a + b;
+    end
+    static func say(s = "hi static") begin
+        outputLine(s);
+    end
+end
+
+o1 = new A();
+outputLine(o1.val); 
+
+o2 = new A(2000);
+outputLine(o2.val); 
+
+outputLine(o1.calc(1));  
+outputLine(o1.calc(1,9));
+
+A.say();
+A.say("hello world");
+
+class SignalObj begin
+    func init() begin
+    end
+end
+
+func slotA() begin
+    output("slot A executed\n");
+end
+
+func slotB() begin
+    output("slot B executed\n");
+end
+
+sig = new SignalObj();
+
+(sig >> slotA);
+(sig >> slotB);
+
+output("----- emit sig -----\n");
+emit sig;
+
+(sig !> slotA);
+output("\n----- after disconnect slotA emit -----\n");
+emit sig;
+
+(sig !> all);
+output("\n----- disconnect all emit sig -----\n");
+emit sig;

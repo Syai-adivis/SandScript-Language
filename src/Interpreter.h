@@ -267,12 +267,21 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 if (s->kind == ASTNode::FUNC_DEF)
                 {
                     std::string fname = s->val;
+                    std::vector<FuncParamInfo> paramsInfo;
                     size_t paramCnt = s->children.size() - 1;
-                    std::vector<std::string> params;
-                    for (size_t i = 0; i < paramCnt; i++)
-                        params.push_back(s->children[i]->val);
+                    for (size_t i = 0; i < paramCnt; ++i)
+                    {
+                        ASTNode *pd = s->children[i].get();
+                        FuncParamInfo pi;
+                        pi.name = pd->children[0]->val;
+                        if (pd->children.size() >= 2)
+                        {
+                            pi.default_expr = pd->children[1].get();
+                        }
+                        paramsInfo.push_back(std::move(pi));
+                    }
                     ASTNode *body = s->children.back().get();
-                    FuncT ft = {params, body};
+                    FuncT ft = std::make_pair(std::move(paramsInfo), body);
                     ns_obj->members[fname] = RuntimeVal(std::move(ft));
                     continue;
                 }
@@ -282,7 +291,6 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     meta->name = s->val;
                     meta->super_class_name = s->val2;
                     meta->super_meta = resolve_superclass(meta->super_class_name, &ns_scope, s->line);
-
                     for (auto &child : s->children)
                     {
                         if (child->kind != ASTNode::FUNC_DEF)
@@ -292,12 +300,21 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                         std::string fname = tag.substr(0, sep);
                         std::string mode = tag.substr(sep + 1);
                         FuncT ft;
-                        std::vector<std::string> params;
+                        std::vector<FuncParamInfo> paramsInfo;
                         size_t paramCnt = child->children.size() - 1;
-                        for (size_t i = 0; i < paramCnt; i++)
-                            params.push_back(child->children[i]->val);
-                        auto body = child->children.back().get();
-                        ft = {params, body};
+                        for (size_t i = 0; i < paramCnt; ++i)
+                        {
+                            ASTNode *pd = child->children[i].get();
+                            FuncParamInfo pi;
+                            pi.name = pd->children[0]->val;
+                            if (pd->children.size() >= 2)
+                            {
+                                pi.default_expr = pd->children[1].get();
+                            }
+                            paramsInfo.push_back(std::move(pi));
+                        }
+                        ASTNode *body = child->children.back().get();
+                        ft = std::make_pair(std::move(paramsInfo), body);
                         if (mode == "instance")
                         {
                             meta->instance_methods[fname] = ft;
@@ -505,6 +522,82 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     pv_num->value = pv_num->value - BigDecimal("1");
                 return RuntimeVal(pv_num->value);
             }
+        }
+        case ASTNode::SLOT_CONNECT_EXPR:
+        {
+            EvalFrame lhs_frame = EvalFrame::make_expr_frame();
+            auto lhsVal = eval(node->children[0].get(), scope, lhs_frame);
+            auto *lhsObj = lhsVal.as_object();
+            if (!lhsObj)
+            {
+                std::cerr << "[" << ln << "] Runtime error: connect(>>) left‑hand side must be object\n";
+                return RuntimeVal();
+            }
+            EvalFrame slot_frame = EvalFrame::make_expr_frame();
+            auto slotVal = eval(node->children[1].get(), scope, slot_frame);
+            auto *fptr = slotVal.as_func();
+            if (!fptr)
+            {
+                std::cerr << "[" << ln << "] Runtime error: connect(>>) right‑hand side must be function(slot)\n";
+                return RuntimeVal();
+            }
+            lhsObj->value->signalSlots.connections.push_back(fptr->value);
+            return RuntimeVal();
+        }
+        case ASTNode::SLOT_DISCONNECT_EXPR:
+        {
+            EvalFrame lhs_frame = EvalFrame::make_expr_frame();
+            auto lhsVal = eval(node->children[0].get(), scope, lhs_frame);
+            auto *lhsObj = lhsVal.as_object();
+            if (!lhsObj)
+            {
+                std::cerr << "[" << ln << "] Runtime error: disconnect(!>) left‑hand side must be object\n";
+                return RuntimeVal();
+            }
+            auto &conn = lhsObj->value->signalSlots.connections;
+            if (node->val == "all")
+            {
+                conn.clear();
+            }
+            else
+            {
+                EvalFrame slot_frame = EvalFrame::make_expr_frame();
+                auto slotVal = eval(node->children[1].get(), scope, slot_frame);
+                auto *fptr = slotVal.as_func();
+                if (!fptr)
+                {
+                    std::cerr << "[" << ln << "] Runtime error: disconnect(!>) argument must be function\n";
+                    return RuntimeVal();
+                }
+                ASTNode *targetBody = fptr->value.second;
+                conn.erase(std::remove_if(conn.begin(), conn.end(),
+                                          [&](const FuncT &ft)
+                                          {
+                                              return ft.second == targetBody;
+                                          }),
+                           conn.end());
+            }
+            return RuntimeVal();
+        }
+       case ASTNode::EMIT_EXPR:
+        {
+            EvalFrame obj_frame = EvalFrame::make_expr_frame();
+            auto signalObjVal = eval(node->children[0].get(), scope, obj_frame);
+            auto *signalObj = signalObjVal.as_object();
+                if (!signalObj)
+            {
+                std::cerr << "[" << ln << "] Runtime error: emit requires object instance\n";
+                return RuntimeVal();
+            }
+            auto snapshot = signalObj->value->signalSlots.connections;
+            for (auto &ft : snapshot)
+            {
+                Scope fscope(scope);
+                ASTNode *bodyAst = ft.second;
+                EvalFrame child_frame = frame.make_child();
+                eval(bodyAst, &fscope, child_frame);
+            }
+            return RuntimeVal();
         }
         case ASTNode::UNARY:
         {
@@ -865,14 +958,21 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
         }
         case ASTNode::LAMBDA_EXPR:
         {
-            std::vector<std::string> params;
+            std::vector<FuncParamInfo> paramsInfo;
             size_t paramCnt = node->children.size() - 1;
             for (size_t i = 0; i < paramCnt; i++)
             {
-                params.push_back(node->children[i]->val);
+                ASTNode *pd = node->children[i].get();
+                FuncParamInfo pi;
+                pi.name = pd->children[0]->val;
+                if (pd->children.size() >= 2)
+                {
+                    pi.default_expr = pd->children[1].get();
+                }
+                paramsInfo.push_back(std::move(pi));
             }
             ASTNode *bodyAst = node->children.back().get();
-            FuncT ft = {params, bodyAst};
+            FuncT ft = std::make_pair(std::move(paramsInfo), bodyAst);
             return RuntimeVal(std::move(ft));
         }
         case ASTNode::INDEX:
@@ -998,19 +1098,64 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 Scope fscope(scope);
                 fscope.set("self", base_val.clone());
                 fscope.set("__super_meta", RuntimeVal(obj.meta->super_meta));
+
                 size_t argCount = node->children.size() - 1;
-                for (size_t i = 0; i < argCount; i++)
+                std::vector<FuncParamInfo> &params = ft.first;
+                ASTNode *func_body = ft.second;
+
+                int variadicIndex = -1;
+                for (int pi = 0; pi < (int)params.size(); pi++)
                 {
-                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
-                    auto arg = eval(node->children[i + 1].get(), scope, arg_frame);
-                    size_t paramIdx = i + 1;
-                    if (paramIdx < ft.first.size())
+                    if (params[pi].name.substr(0, 3) == "...")
                     {
-                        fscope.set(ft.first[paramIdx], std::move(arg));
+                        variadicIndex = pi;
+                        break;
                     }
                 }
+                Array restArr;
+                for (size_t argIdx = 0; argIdx < argCount; argIdx++)
+                {
+                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                    auto argVal = eval(node->children[argIdx + 1].get(), scope, arg_frame);
+                    int paramIdx = static_cast<int>(argIdx) + 1;
+                    if (variadicIndex != -1 && paramIdx >= variadicIndex)
+                    {
+                        restArr.push_back(std::move(argVal));
+                    }
+                    else
+                    {
+                        fscope.set(params[paramIdx].name, std::move(argVal));
+                    }
+                }
+                for (int pi = 1; pi < (int)params.size(); pi++)
+                {
+                    FuncParamInfo &pinfo = params[pi];
+                    if (pinfo.name.substr(0, 3) == "...")
+                    {
+                        std::string realName = pinfo.name.substr(3);
+                        fscope.set(realName, RuntimeVal(std::move(restArr)));
+                        continue;
+                    }
+                    int userArgCnt = static_cast<int>(argCount);
+                    if (pi < userArgCnt + 1 && (variadicIndex == -1 || pi < variadicIndex))
+                    {
+                        continue; // 已经传参
+                    }
+                    if (pinfo.default_expr != nullptr)
+                    {
+                        EvalFrame def_frame = EvalFrame::make_expr_frame();
+                        RuntimeVal defVal = eval(pinfo.default_expr, &fscope, def_frame);
+                        fscope.set(pinfo.name, std::move(defVal));
+                    }
+                    else
+                    {
+                        std::cerr << "[" << ln << "] Runtime error: method missing argument '" << pinfo.name << "' no default\n";
+                        return RuntimeVal();
+                    }
+                }
+
                 EvalFrame child_frame = frame.make_child();
-                eval(ft.second, &fscope, child_frame);
+                eval(func_body, &fscope, child_frame);
                 return RuntimeVal(std::move(child_frame.ret_val));
             }
             auto *cls_ptr = base_val.as_classmeta();
@@ -1025,16 +1170,62 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 }
                 FuncT &ft = *ft_ptr;
                 Scope fscope(scope);
+                std::vector<FuncParamInfo> &params = ft.first;
+                ASTNode *func_body = ft.second;
+
                 size_t argCount = node->children.size() - 1;
+                int variadicIndex = -1;
+                for (int pi = 0; pi < (int)params.size(); pi++)
+                {
+                    if (params[pi].name.substr(0, 3) == "...")
+                    {
+                        variadicIndex = pi;
+                        break;
+                    }
+                }
+                Array restArr;
                 for (size_t i = 0; i < argCount; i++)
                 {
                     EvalFrame arg_frame = EvalFrame::make_expr_frame();
-                    auto arg = eval(node->children[i + 1].get(), scope, arg_frame);
-                    if (i < ft.first.size())
-                        fscope.set(ft.first[i], std::move(arg));
+                    auto argVal = eval(node->children[i + 1].get(), scope, arg_frame);
+                    if (variadicIndex != -1 && (int)i >= variadicIndex)
+                    {
+                        restArr.push_back(std::move(argVal));
+                    }
+                    else
+                    {
+                        fscope.set(params[i].name, std::move(argVal));
+                    }
                 }
+                // 填充默认参数，静态方法无self
+                for (int pi = 0; pi < (int)params.size(); pi++)
+                {
+                    FuncParamInfo &pinfo = params[pi];
+                    if (pinfo.name.substr(0, 3) == "...")
+                    {
+                        std::string realName = pinfo.name.substr(3);
+                        fscope.set(realName, RuntimeVal(std::move(restArr)));
+                        continue;
+                    }
+                    if ((size_t)pi < argCount && (variadicIndex == -1 || pi < (size_t)variadicIndex))
+                    {
+                        continue;
+                    }
+                    if (pinfo.default_expr != nullptr)
+                    {
+                        EvalFrame def_frame = EvalFrame::make_expr_frame();
+                        RuntimeVal defVal = eval(pinfo.default_expr, &fscope, def_frame);
+                        fscope.set(pinfo.name, std::move(defVal));
+                    }
+                    else
+                    {
+                        std::cerr << "[" << ln << "] Runtime error: static method missing argument '" << pinfo.name << "' no default\n";
+                        return RuntimeVal();
+                    }
+                }
+
                 EvalFrame child_frame = frame.make_child();
-                eval(ft.second, &fscope, child_frame);
+                eval(func_body, &fscope, child_frame);
                 return RuntimeVal(std::move(child_frame.ret_val));
             }
             std::cerr << "[" << ln << "] Runtime error: member call requires object/class\n";
@@ -1055,12 +1246,21 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 std::string fname = tag.substr(0, sep);
                 std::string mode = tag.substr(sep + 1);
                 FuncT ft;
-                std::vector<std::string> params;
+                std::vector<FuncParamInfo> paramsInfo;
                 size_t paramCnt = child->children.size() - 1;
-                for (size_t i = 0; i < paramCnt; i++)
-                    params.push_back(child->children[i]->val);
-                auto body = child->children.back().get();
-                ft = {params, body};
+                for (size_t i = 0; i < paramCnt; ++i)
+                {
+                    ASTNode *pd = child->children[i].get();
+                    FuncParamInfo pi;
+                    pi.name = pd->children[0]->val;
+                    if (pd->children.size() >= 2)
+                    {
+                        pi.default_expr = pd->children[1].get();
+                    }
+                    paramsInfo.push_back(std::move(pi));
+                }
+                ASTNode *body = child->children.back().get();
+                ft = std::make_pair(std::move(paramsInfo), body);
                 if (mode == "instance")
                 {
                     meta->instance_methods[fname] = ft;
@@ -1097,29 +1297,86 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 Scope fscope(scope);
                 fscope.set("self", obj_val.clone());
                 fscope.set("__super_meta", RuntimeVal(obj_inst_ptr->meta->super_meta));
-                for (size_t argi = 0; argi < node->children.size(); argi++)
+
+                std::vector<FuncParamInfo> &params = init_ft.first;
+                ASTNode *func_body = init_ft.second;
+                size_t argCount = node->children.size();
+
+                int variadicIndex = -1;
+                for (int pi = 0; pi < (int)params.size(); pi++)
                 {
-                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
-                    auto arg = eval(node->children[argi].get(), scope, arg_frame);
-                    size_t param_idx = argi + 1;
-                    if (param_idx < init_ft.first.size())
+                    if (params[pi].name.substr(0, 3) == "...")
                     {
-                        fscope.set(init_ft.first[param_idx], std::move(arg));
+                        variadicIndex = pi;
+                        break;
                     }
                 }
+                Array restArr;
+                // init第一个参数self，用户参数从paramIdx=1开始
+                for (size_t argIdx = 0; argIdx < argCount; argIdx++)
+                {
+                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                    auto argVal = eval(node->children[argIdx].get(), scope, arg_frame);
+                    int paramIdx = static_cast<int>(argIdx) + 1;
+                    if (variadicIndex != -1 && paramIdx >= variadicIndex)
+                    {
+                        restArr.push_back(std::move(argVal));
+                    }
+                    else
+                    {
+                        fscope.set(params[paramIdx].name, std::move(argVal));
+                    }
+                }
+                // 填充默认参数，跳过self(pi=0)
+                for (int pi = 1; pi < (int)params.size(); pi++)
+                {
+                    FuncParamInfo &pinfo = params[pi];
+                    if (pinfo.name.substr(0, 3) == "...")
+                    {
+                        std::string realName = pinfo.name.substr(3);
+                        fscope.set(realName, RuntimeVal(std::move(restArr)));
+                        continue;
+                    }
+                    int userArgCnt = static_cast<int>(argCount);
+                    if (pi < userArgCnt + 1 && (variadicIndex == -1 || pi < variadicIndex))
+                    {
+                        continue;
+                    }
+                    if (pinfo.default_expr != nullptr)
+                    {
+                        EvalFrame def_frame = EvalFrame::make_expr_frame();
+                        RuntimeVal defVal = eval(pinfo.default_expr, &fscope, def_frame);
+                        fscope.set(pinfo.name, std::move(defVal));
+                    }
+                    else
+                    {
+                        std::cerr << "[" << ln << "] Runtime error: constructor init missing argument '" << pinfo.name << "' no default\n";
+                        return RuntimeVal();
+                    }
+                }
+
                 EvalFrame subframe = frame.make_child();
-                eval(init_ft.second, &fscope, subframe);
+                eval(func_body, &fscope, subframe);
             }
             return obj_val;
         }
         case ASTNode::FUNC_DEF:
         {
-            std::vector<std::string> params;
+            std::vector<FuncParamInfo> paramsInfo;
             size_t paramCnt = node->children.size() - 1;
             for (size_t i = 0; i < paramCnt; i++)
-                params.push_back(node->children[i]->val);
-            auto body = node->children.back().get();
-            scope->set(node->val, RuntimeVal(std::make_pair(params, body)));
+            {
+                ASTNode *pd = node->children[i].get();
+                FuncParamInfo pi;
+                pi.name = pd->children[0]->val;
+                if (pd->children.size() >= 2)
+                {
+                    pi.default_expr = pd->children[1].get();
+                }
+                paramsInfo.push_back(std::move(pi));
+            }
+            ASTNode *body = node->children.back().get();
+            scope->set(node->val, RuntimeVal(std::make_pair(std::move(paramsInfo), body)));
             return RuntimeVal();
         }
         case ASTNode::CALL:
@@ -1488,57 +1745,59 @@ Eastern mysticism:
                 std::cerr << "[" << ln << "] Runtime error: not a function\n";
                 return RuntimeVal();
             }
-
             Scope fscope(scope);
-            auto &params = fptr->value.first;
-            auto *func_body = fptr->value.second;
+            FuncT &ft = fptr->value;
+            std::vector<FuncParamInfo> &params = ft.first;
+            ASTNode *func_body = ft.second;
+
             size_t argCount = node->children.size();
             int variadicIndex = -1;
             for (int pi = 0; pi < (int)params.size(); pi++)
             {
-                if (params[pi].substr(0, 3) == "...")
+                if (params[pi].name.substr(0, 3) == "...")
                 {
                     variadicIndex = pi;
                     break;
                 }
             }
-            if (variadicIndex == -1)
+            Array restArr;
+            for (size_t i = 0; i < argCount; i++)
             {
-                if (argCount != params.size())
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                auto argVal = eval(node->children[i].get(), scope, arg_frame);
+                if (variadicIndex != -1 && (int)i >= variadicIndex)
                 {
-                    std::cerr << "[" << ln << "] Runtime error: function expects " << params.size() << " arguments, got " << argCount << "\n";
-                    return RuntimeVal();
+                    restArr.push_back(std::move(argVal));
                 }
-                for (size_t i = 0; i < params.size(); i++)
+                else
                 {
-                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
-                    auto arg = eval(node->children[i].get(), scope, arg_frame);
-                    fscope.set(params[i], std::move(arg));
+                    fscope.set(params[i].name, std::move(argVal));
                 }
             }
-            else
+            for (int pi = 0; pi < (int)params.size(); pi++)
             {
-                size_t fixedCnt = (size_t)variadicIndex;
-                Array restArr;
-                for (size_t i = 0; i < argCount; i++)
+                FuncParamInfo &pinfo = params[pi];
+                if (pinfo.name.substr(0, 3) == "...")
                 {
-                    EvalFrame arg_frame = EvalFrame::make_expr_frame();
-                    auto arg = eval(node->children[i].get(), scope, arg_frame);
-                    if (i < fixedCnt)
-                    {
-                        fscope.set(params[i], std::move(arg));
-                    }
-                    else
-                    {
-                        restArr.push_back(std::move(arg));
-                    }
+                    std::string realName = pinfo.name.substr(3);
+                    fscope.set(realName, RuntimeVal(std::move(restArr)));
+                    continue;
                 }
-                for (size_t i = argCount; i < fixedCnt; i++)
+                if ((size_t)pi < argCount && (variadicIndex == -1 || pi < (size_t)variadicIndex))
                 {
-                    fscope.set(params[i], RuntimeVal());
+                    continue;
                 }
-                std::string restName = params[variadicIndex].substr(3);
-                fscope.set(restName, RuntimeVal(std::move(restArr)));
+                if (pinfo.default_expr != nullptr)
+                {
+                    EvalFrame def_frame = EvalFrame::make_expr_frame();
+                    RuntimeVal defVal = eval(pinfo.default_expr, &fscope, def_frame);
+                    fscope.set(pinfo.name, std::move(defVal));
+                }
+                else
+                {
+                    std::cerr << "[" << ln << "] Runtime error: function missing argument for '" << pinfo.name << "' (no default value)\n";
+                    return RuntimeVal();
+                }
             }
 
             EvalFrame child_frame = frame.make_child();

@@ -5,14 +5,14 @@ int main(int argc, char *argv[])
     int program = 1;
     if (argc != 2)
     {
-        std::cout << "SandScript interpreter 2.2.beta\n";
+        std::cout << "SandScript interpreter 2.3.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         return 0;
     }
     if (std::string(argv[1]) == "--version")
     {
-        std::cout << "2.2.beta\n";
+        std::cout << "2.3.beta\n";
         return 0;
     }
     if (std::string(argv[1]) == "--set_BD_DEV_PRECISION")
@@ -262,7 +262,7 @@ limitations under the License.
     }
     if (std::string(argv[1]) == "--help")
     {
-        std::cout << "SandScript interpreter 2.2.beta\n";
+        std::cout << "SandScript interpreter 2.3.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         std::string help = R"XXX(
@@ -286,6 +286,7 @@ stmt           ::= if_stmt
                  | index_assign_stmt
                  | member_assign_stmt
                  | switch_stmt
+                 | emit_stmt
                  | expr_stmt ;
 
 namespace_stmt ::= "namespace" IDENT "begin" { stmt } "end" ;
@@ -299,6 +300,7 @@ guard_clause   ::= "if" expr ;
 case_pattern   ::= pattern_or ;
 pattern_or     ::= pattern_and { ("or" | "||") pattern_and } ;
 pattern_and    ::= primary { ("and" | "&&") primary } ;
+emit_stmt      ::= "emit" IDENT ";" ;
 while_stmt     ::= "while" "(" expr ")" block ;
 for_in_stmt    ::= "for" IDENT "in" expr block ;
 
@@ -322,7 +324,10 @@ incdec_stmt        ::= lvalue_incdec ( "++" | "--" ) ";" ;
 index_assign_stmt  ::= IDENT "[" expr "]" "=" expr ";" ;
 member_assign_stmt ::= primary "." IDENT "=" expr ";" ;
 
-expr_stmt      ::= expr ";" ;
+expr_stmt      ::= expr | connect | disconnect ";" ;
+
+connect        ::= "(" IDENT ">>" IDENT ")" ;
+disconnect     ::= "(" IDENT "!>" ( "all" | IDENT ) ")" ;
 
 block          ::= "begin" { stmt } "end" ;
 
