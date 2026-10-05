@@ -228,9 +228,12 @@ VMClosure Compiler::compile_function(ASTNode *funcNode)
     VMClosure clos;
     Compiler subcomp;
     size_t paramCnt = funcNode->children.size() - 1;
+    // 1.收集参数，同时记录哪些参数带默认值
+    std::vector<std::pair<std::string, ASTNode *>> paramInfo;
     for (size_t i = 0; i < paramCnt; i++)
     {
-        std::string pname = funcNode->children[i]->val;
+        ASTNode *pd = funcNode->children[i].get();
+        std::string pname = pd->children[0]->val;
         if (pname.substr(0, 3) == "...")
         {
             clos.variadicIndex = static_cast<int>(clos.params.size());
@@ -238,7 +241,26 @@ VMClosure Compiler::compile_function(ASTNode *funcNode)
         }
         subcomp.chunk.add_string(pname);
         clos.params.push_back(pname);
+        ASTNode *def = nullptr;
+        if (pd->children.size() >= 2)
+        {
+            def = pd->children[1].get();
+        }
+        paramInfo.emplace_back(pname, def);
     }
+
+    for (size_t i = 0; i < paramInfo.size(); i++)
+    {
+        auto &[pname, defAst] = paramInfo[i];
+        if (defAst == nullptr)
+            continue;
+
+        subcomp.compile_expr(defAst);
+        uint32_t sidx = subcomp.chunk.add_string(pname);
+        subcomp.chunk.emit_op(OP_STORE_VAR);
+        subcomp.chunk.emit_u32(sidx);
+    }
+
     ASTNode *body = funcNode->children.back().get();
     subcomp.compile_stmt(body);
     uint32_t nilIdx = subcomp.chunk.add_const(RuntimeVal());
@@ -700,6 +722,38 @@ void Compiler::compile_expr(ASTNode *node)
             compile_expr(c.get());
         chunk.emit_op(OP_DICT_LIT);
         chunk.emit_u32((uint32_t)(node->children.size() / 2));
+        break;
+    }
+    case ASTNode::SLOT_CONNECT_EXPR:
+    {
+        compile_expr(node->children[0].get());
+        compile_expr(node->children[1].get());
+        chunk.emit_op(OP_SLOT_CONNECT);
+        break;
+    }
+    case ASTNode::SLOT_DISCONNECT_EXPR:
+    {
+        compile_expr(node->children[0].get());
+        if (node->val == "all")
+        {
+            uint32_t cidx = chunk.add_const(RuntimeVal(BigDecimal("1")));
+            chunk.emit_op(OP_PUSH_CONST);
+            chunk.emit_u32(cidx);
+        }
+        else
+        {
+            compile_expr(node->children[1].get());
+            uint32_t cidx = chunk.add_const(RuntimeVal(BigDecimal("0")));
+            chunk.emit_op(OP_PUSH_CONST);
+            chunk.emit_u32(cidx);
+        }
+        chunk.emit_op(OP_SLOT_DISCONNECT);
+        break;
+    }
+    case ASTNode::EMIT_EXPR:
+    {
+        compile_expr(node->children[0].get());
+        chunk.emit_op(OP_EMIT);
         break;
     }
     case ASTNode::BINARY:
@@ -1233,6 +1287,90 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
             }
             break;
         }
+        case OP_SLOT_CONNECT:
+        {
+            auto slotFun = pop();
+            auto objVal = pop();
+            auto *obj = objVal.as_object();
+            if (!obj)
+            {
+                std::cerr << "[VM] OP_SLOT_CONNECT left must be object\n";
+                push(RuntimeVal());
+                break;
+            }
+            auto *f = VM::unwrap_closure(slotFun);
+            if (!f)
+            {
+                std::cerr << "[VM] OP_SLOT_CONNECT right must be function\n";
+                push(RuntimeVal());
+                break;
+            }
+            FuncT ft;
+            for (const std::string &paramName : f->params)
+            {
+                FuncParamInfo info;
+                info.name = paramName;
+                info.default_expr = nullptr;
+                ft.first.push_back(std::move(info));
+            }
+            ft.second = nullptr;
+            obj->value->signalSlots.connections.push_back(std::move(ft));
+            push(RuntimeVal());
+            break;
+        }
+        case OP_SLOT_DISCONNECT:
+        {
+            auto flagAll = pop();
+            auto objVal = pop();
+            auto *obj = objVal.as_object();
+            if (!obj)
+            {
+                std::cerr << "[VM] OP_SLOT_DISCONNECT left must be object\n";
+                push(RuntimeVal());
+                break;
+            }
+            bool isAll = !(flagAll.as_num()->value == BigDecimal("0"));
+            auto &connList = obj->value->signalSlots.connections;
+            if (isAll)
+            {
+                connList.clear();
+            }
+            else
+            {
+                auto slotFun = pop();
+                auto *f = VM::unwrap_closure(slotFun);
+                if (!f)
+                {
+                    std::cerr << "[VM] OP_SLOT_DISCONNECT argument must be function\n";
+                    push(RuntimeVal());
+                    break;
+                }
+                connList.erase(std::remove_if(connList.begin(), connList.end(), [&](FuncT &ft)
+                                              { return ft.second == nullptr; }),
+                               connList.end());
+            }
+            push(RuntimeVal());
+            break;
+        }
+        case OP_EMIT:
+        {
+            auto objVal = pop();
+            auto *obj = objVal.as_object();
+            if (!obj)
+            {
+                std::cerr << "[VM] OP_EMIT need object instance\n";
+                push(RuntimeVal());
+                break;
+            }
+            auto snapshot = obj->value->signalSlots.connections;
+            for (auto &ft : snapshot)
+            {
+                VMClosure *clos = nullptr;
+                // Demo implement
+            }
+            push(RuntimeVal());
+            break;
+        }
         case OP_CLASS_META:
         {
             uint32_t nameIdx = read_u32();
@@ -1259,7 +1397,13 @@ RuntimeVal VM::run(ByteCodeChunk &bc, Scope *global_scope, Interpreter *interp)
                     continue;
 
                 FuncT ft;
-                ft.first = pClos->params;
+                for (const std::string &paramName : pClos->params)
+                {
+                    FuncParamInfo info;
+                    info.name = paramName;
+                    info.default_expr = nullptr;
+                    ft.first.push_back(std::move(info));
+                }
                 ft.second = nullptr;
 
                 if (mode == "instance")
@@ -1671,7 +1815,7 @@ Eastern mysticism:
             for (int64_t i = (int64_t)argCnt - 1; i >= 0; i--)
             {
                 auto a = pop();
-                newFrame.scope.set(ft->first[i + 1], std::move(a));
+                newFrame.scope.set(ft->first[i + 1].name, std::move(a));
             }
             frame_stack.push_back(std::move(newFrame));
             break;
@@ -1754,7 +1898,7 @@ Eastern mysticism:
                 for (int64_t i = (int64_t)argCnt - 1; i >= 0; i--)
                 {
                     auto arg = pop();
-                    newFr.scope.set(itInit->second.first[i + 1], std::move(arg));
+                    newFr.scope.set(itInit->second.first[i + 1].name, std::move(arg));
                 }
                 frame_stack.push_back(std::move(newFr));
             }

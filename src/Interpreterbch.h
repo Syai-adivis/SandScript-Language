@@ -77,6 +77,9 @@ enum OpCode : uint8_t
     OP_IMPORT,
     OP_PUSH_LOOP,
     OP_POP_LOOP,
+    OP_SLOT_CONNECT,
+    OP_SLOT_DISCONNECT,
+    OP_EMIT,
     OP_HALT
 };
 struct ByteCodeChunk
