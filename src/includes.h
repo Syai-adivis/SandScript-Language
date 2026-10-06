@@ -20,3 +20,5 @@
 #include <stack>
 #include <functional>
 #include <cmath>
+
+#include "SetColor.h"

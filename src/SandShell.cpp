@@ -19,10 +19,15 @@ static int count_token(const std::string &buf, const std::string &tok)
 
 static void repl_main(const std::string &exePathRaw)
 {
-    std::cout << "SandScript Shell \n";
+    Console::setColor(Console::Color::Green);
+    std::cout << "SandScript ";
+    Console::setColor(Console::Color::Yellow);
+    std::cout << "Shell \n";
+    Console::setColor(Console::Color::Magenta);
     std::cout << " enter exit/quit to exit" << std::endl;
     std::cout << " enter copyright to get license information" << std::endl;
     std::cout << " enter help to get help information" << std::endl;
+    Console::setColor(Console::Color::Reset);
     Interpreter interp;
     fs::path exePath = fs::absolute(exePathRaw);
 

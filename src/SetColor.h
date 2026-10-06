@@ -2,35 +2,6 @@
 #define CONSOLE_COLOR_H
 #include <iostream>
 
-#ifdef _WIN32
-#include <windows.h>
-static bool g_consoleAnsiEnabled = false;
-
-static void enableWindowsAnsi()
-{
-    if (g_consoleAnsiEnabled)
-        return;
-    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hOut == INVALID_HANDLE_VALUE)
-        return;
-    DWORD dwMode = 0;
-    if (GetConsoleMode(hOut, &dwMode))
-    {
-        dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-        SetConsoleMode(hOut, dwMode);
-    }
-    g_consoleAnsiEnabled = true;
-}
-
-static void setWinColor(WORD attr)
-{
-    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    SetConsoleTextAttribute(hOut, attr);
-}
-#else
-static inline void enableWindowsAnsi() {}
-#endif
-
 namespace Console
 {
     enum class Color
@@ -49,9 +20,6 @@ namespace Console
 
     inline void setColor(Color c)
     {
-#ifdef _WIN32
-        enableWindowsAnsi();
-#endif
         switch (c)
         {
         case Color::Reset:
@@ -87,7 +55,6 @@ namespace Console
         }
     }
 
-    // 带颜色打印一行，自动重置
     template <typename T>
     void printColored(const T &text, Color color)
     {

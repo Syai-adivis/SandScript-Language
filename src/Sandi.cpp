@@ -5,21 +5,27 @@ int main(int argc, char *argv[])
     int program = 1;
     if (argc != 2)
     {
+        Console::setColor(Console::Color::Green);
         std::cout << "SandScript interpreter 2.3.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
+        Console::setColor(Console::Color::Reset);
         return 0;
     }
     if (std::string(argv[1]) == "--version")
     {
+        Console::setColor(Console::Color::Green);
         std::cout << "2.3.beta\n";
+        Console::setColor(Console::Color::Reset);
         return 0;
     }
     if (std::string(argv[1]) == "--set_BD_DEV_PRECISION")
     {
         if (argc < 3)
         {
+            Console::setColor(Console::Color::Red);
             std::cerr << "Error: --set_BD_DEV_PRECISION requires an integer argument\n";
+            Console::setColor(Console::Color::Reset);
             return 1;
         }
         int precision = std::stoi(argv[2]);
@@ -49,7 +55,9 @@ int main(int argc, char *argv[])
             OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
             SOFTWARE.
         )XXX";
+        Console::setColor(Console::Color::Yellow);
         std::cout << copyright << "\n";
+        Console::setColor(Console::Color::Reset);
         return 0;
     }
     if (std::string(argv[1]) == "--copyright-apache")
@@ -257,11 +265,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
         )XXX";
+        Console::setColor(Console::Color::Yellow);
         std::cout << copyright << "\n";
+        Console::setColor(Console::Color::Reset);
         return 0;
     }
     if (std::string(argv[1]) == "--help")
     {
+        Console::setColor(Console::Color::Green);
         std::cout << "SandScript interpreter 2.3.beta\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
@@ -374,13 +385,17 @@ non_ascii      ::= #x80 ... #xFFFF ;
 (* Operators: ++,--,+=,-=,*=,/=,+,-,*,/,==,!=,<,>,<=,>=,&&,||,!,=,.,... *)
 (* Punctuation: ( ) [ ] { } , : ; *)
         )XXX";
+        Console::setColor(Console::Color::Yellow);
         std::cout << help << "\n";
+        Console::setColor(Console::Color::Reset);
         return 0;
     }
     std::ifstream fin(argv[program]);
     if (!fin.is_open())
     {
+        Console::setColor(Console::Color::Red);
         std::cerr << "Error: cannot open file " << argv[program] << "\n";
+        Console::setColor(Console::Color::Reset);
         return 1;
     }
     std::stringstream buffer;
@@ -405,11 +420,15 @@ non_ascii      ::= #x80 ... #xFFFF ;
     }
     catch (const std::exception &e)
     {
+        Console::setColor(Console::Color::Red);
         std::cerr << "EXCEPTION CAUGHT: " << e.what() << "\n";
+        Console::setColor(Console::Color::Reset);
     }
     catch (...)
     {
+        Console::setColor(Console::Color::Red);
         std::cerr << "UNKNOWN EXCEPTION CAUGHT\n";
+        Console::setColor(Console::Color::Reset);
     }
     std::cout << std::flush;
     return 0;

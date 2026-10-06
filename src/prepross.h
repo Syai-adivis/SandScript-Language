@@ -116,7 +116,9 @@ PreProcLineResult preproc_handle_line(const std::string &line, PreProcContext &c
             return res;
         if (ctx.classPrivateSetStack.empty())
         {
+            Console::setColor(Console::Color::Red);
             std::cerr << "[Preproc] error: #private must be used inside class begin ... end\n";
+            Console::setColor(Console::Color::Reset);
             return res;
         }
         std::string rest;
@@ -325,7 +327,9 @@ void preproc_include_file(PreProcContext &ctx, const fs::path &baseDir, const st
     std::ifstream fin(absPath);
     if (!fin.is_open())
     {
+        Console::setColor(Console::Color::Red);
         std::cerr << "[Preproc] cannot include file: " << absPath << "\n";
+        Console::setColor(Console::Color::Reset);
         return;
     }
     std::stringstream buf;

@@ -82,18 +82,24 @@ RuntimeVal *Interpreter::get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *
         auto *num_ptr = idxv.as_num();
         if (!num_ptr)
         {
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << line << "] Runtime error: array index must be number\n";
+            Console::setColor(Console::Color::Reset);
             return nullptr;
         }
         size_t i;
         if (!safe_to_size_t(num_ptr->value, i))
         {
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << line << "] Runtime error: invalid index value (must be non‑negative small integer)\n";
+            Console::setColor(Console::Color::Reset);
             return nullptr;
         }
         if (i >= arr_ptr->value.size())
         {
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << line << "] Runtime error: array index out of bounds\n";
+            Console::setColor(Console::Color::Reset);
             return nullptr;
         }
         return &arr_ptr->value[i];
@@ -105,12 +111,16 @@ RuntimeVal *Interpreter::get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *
         auto it = map_find_const(dict_ptr->value, idxv);
         if (it == dict_ptr->value.end())
         {
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << line << "] Runtime error: dict key not found\n";
+            Console::setColor(Console::Color::Reset);
             return nullptr;
         }
         return &it->second;
     }
+    Console::setColor(Console::Color::Red);
     std::cerr << "[" << line << "] Runtime error: cannot index‑assign non‑array/non‑dict\n";
+    Console::setColor(Console::Color::Reset);
     return nullptr;
 }
 
@@ -168,13 +178,17 @@ std::shared_ptr<ClassMeta> Interpreter::resolve_superclass(const std::string &su
     RuntimeVal *super_val = scope->get(super_name);
     if (!super_val)
     {
+        Console::setColor(Console::Color::Red);
         std::cerr << "[" << line << "] Runtime error: super class '" << super_name << "' not defined\n";
+        Console::setColor(Console::Color::Reset);
         return nullptr;
     }
     auto *super_meta_ptr = super_val->as_classmeta();
     if (!super_meta_ptr)
     {
+        Console::setColor(Console::Color::Red);
         std::cerr << "[" << line << "] Runtime error: '" << super_name << "' is not a class\n";
+        Console::setColor(Console::Color::Reset);
         return nullptr;
     }
     return super_meta_ptr->value;
@@ -185,7 +199,9 @@ void Interpreter::import_file(const std::string &path)
     std::ifstream fin(path);
     if (!fin.is_open())
     {
+        Console::setColor(Console::Color::Red);
         std::cerr << "Import error: cannot open file " << path << "\n";
+        Console::setColor(Console::Color::Reset);
         return;
     }
     std::stringstream buf;
@@ -240,7 +256,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             auto p = scope->get(node->val);
             if (!p)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: undefined variable: " << node->val << "\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             return p->clone();
@@ -348,7 +366,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             auto base_p = scope->get(node->val);
             if (!base_p)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: undefined variable: " << node->val << "\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             EvalFrame idx_frame = EvalFrame::make_expr_frame();
@@ -376,7 +396,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 obj_ptr->value->members[mem_name] = std::move(rhs_val);
                 return RuntimeVal();
             }
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << ln << "] Runtime error: member assign requires object instance\n";
+            Console::setColor(Console::Color::Reset);
             return RuntimeVal();
         }
         case ASTNode::COMPOUND_ASSIGN:
@@ -407,14 +429,18 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     size_t i;
                     if (!safe_to_size_t(idxnum->value, i) || i >= arr->value.size())
                     {
+                        Console::setColor(Console::Color::Red);
                         std::cerr << "[" << ln << "] Runtime error: index invalid\n";
+                        Console::setColor(Console::Color::Reset);
                         return RuntimeVal();
                     }
                     auto &lval = arr->value[i];
                     auto *lnum = lval.as_num();
                     if (!lnum)
                     {
+                        Console::setColor(Console::Color::Red);
                         std::cerr << "[" << ln << "] Runtime error: compound assign requires number\n";
+                        Console::setColor(Console::Color::Reset);
                         return RuntimeVal();
                     }
                     BigDecimal res;
@@ -437,7 +463,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto pv = scope->get(varname);
                 if (!pv)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] undefined var " << varname << "\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
 
@@ -448,7 +476,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *rhs_num = rhs.as_num();
                 if (!pv_num || !rhs_num)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: compound assign requires number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 BigDecimal res;
@@ -483,20 +513,26 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *idxnum = idxVal.as_num();
                 if (!arr || !idxnum)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: index invalid for ++/--\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 size_t i;
                 if (!safe_to_size_t(idxnum->value, i) || i >= arr->value.size())
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: index invalid for ++/--\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 RuntimeVal &lv = arr->value[i];
                 auto *lv_num = lv.as_num();
                 if (!lv_num)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: ++/-- only for number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 if (op == "++")
@@ -513,7 +549,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *pv_num = pv ? pv->as_num() : nullptr;
                 if (!pv || !pv_num)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: ++/-- only for number variable\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 if (is_inc)
@@ -530,7 +568,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             auto *lhsObj = lhsVal.as_object();
             if (!lhsObj)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: connect(>>) left‑hand side must be object\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             EvalFrame slot_frame = EvalFrame::make_expr_frame();
@@ -538,7 +578,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             auto *fptr = slotVal.as_func();
             if (!fptr)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: connect(>>) right‑hand side must be function(slot)\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             lhsObj->value->signalSlots.connections.push_back(fptr->value);
@@ -551,7 +593,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             auto *lhsObj = lhsVal.as_object();
             if (!lhsObj)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: disconnect(!>) left‑hand side must be object\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             auto &conn = lhsObj->value->signalSlots.connections;
@@ -566,7 +610,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *fptr = slotVal.as_func();
                 if (!fptr)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: disconnect(!>) argument must be function\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 ASTNode *targetBody = fptr->value.second;
@@ -586,7 +632,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             auto *signalObj = signalObjVal.as_object();
             if (!signalObj)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: emit requires object instance\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             auto snapshot = signalObj->value->signalSlots.connections;
@@ -608,7 +656,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *subnum = sub.as_num();
                 if (!subnum)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: not expects number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 return RuntimeVal((subnum->value == BigDecimal("0")) ? BigDecimal("1") : BigDecimal("0"));
@@ -618,7 +668,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *subnum = sub.as_num();
                 if (!subnum)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: unary minus expects number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 BigDecimal n = subnum->value;
@@ -636,7 +688,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *lnum = lhs.as_num();
                 if (!lnum)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: and requires number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 if (lnum->value == BigDecimal("0"))
@@ -647,7 +701,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *rnum = rhs.as_num();
                 if (!rnum)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: and requires number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 return RuntimeVal((rnum->value == BigDecimal("0")) ? BigDecimal("0") : BigDecimal("1"));
@@ -659,7 +715,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *lnum = lhs.as_num();
                 if (!lnum)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: or requires number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 if (!(lnum->value == BigDecimal("0")))
@@ -670,7 +728,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *rnum = rhs.as_num();
                 if (!rnum)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: or requires number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 return RuntimeVal((rnum->value == BigDecimal("0")) ? BigDecimal("0") : BigDecimal("1"));
@@ -718,7 +778,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     return RuntimeVal(lstr->value + rstr->value);
                 }
             }
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << ln << "] Runtime error: binary operand type mismatch\n";
+            Console::setColor(Console::Color::Reset);
             return RuntimeVal();
         }
         case ASTNode::IF:
@@ -728,7 +790,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             auto *condnum = cond.as_num();
             if (!condnum)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: if‑condition must be number\n";
+                Console::setColor(Console::Color::Reset);
                 break;
             }
             if (!(condnum->value == BigDecimal("0")))
@@ -750,7 +814,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *condnum = cond.as_num();
                 if (!condnum)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: while‑condition must be number\n";
+                    Console::setColor(Console::Color::Reset);
                     break;
                 }
                 if (condnum->value == BigDecimal("0"))
@@ -783,7 +849,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             auto *arrptr = seq_val.as_array();
             if (!arrptr)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: foreach expects array\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             Array &arr = arrptr->value;
@@ -897,7 +965,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             auto *e_num = e.as_num();
             if (!s_num || !e_num)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: range() arguments must be number\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal(Array{});
             }
             BigDecimal start = s_num->value;
@@ -910,7 +980,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *st_num = st.as_num();
                 if (!st_num)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: range() step must be number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal(Array{});
                 }
                 step = st_num->value;
@@ -949,7 +1021,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *k_dict = k.as_dict();
                 if (k_arr || k_dict)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: cannot use array/dict as dict key\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 d.insert_or_assign(std::move(k), std::move(v));
@@ -989,18 +1063,24 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *idxnum = idxv.as_num();
                 if (!idxnum)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: array index must be number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 size_t idx;
                 if (!safe_to_size_t(idxnum->value, idx))
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: invalid index value\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 if (idx >= arrptr->value.size())
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: array index out of bounds\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 return arrptr->value[idx].clone();
@@ -1011,12 +1091,16 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto it = map_find_const(dictptr->value, idxv);
                 if (it == dictptr->value.end())
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: dict key not found\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 return it->second.clone();
             }
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << ln << "] Runtime error: index requires array/dict\n";
+            Console::setColor(Console::Color::Reset);
             return RuntimeVal();
         }
         case ASTNode::MEMBER_ACCESS:
@@ -1033,7 +1117,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 {
                     return it->second.clone();
                 }
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: object member '" << mem << "' not found\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             auto *cls_ptr = base_val.as_classmeta();
@@ -1045,10 +1131,14 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 {
                     return RuntimeVal(it->second);
                 }
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: class static member " << mem << " not found\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << ln << "] Runtime error: . operator needs object/class\n";
+            Console::setColor(Console::Color::Reset);
             return RuntimeVal();
         }
         case ASTNode::MEMBER_CALL:
@@ -1064,7 +1154,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto p_self = scope->get("self");
                 if (!p_super_meta || p_super_meta->as_classmeta() == nullptr || !p_self)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: super can only be used inside instance method\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 super_lookup_meta = p_super_meta->as_classmeta()->value;
@@ -1091,7 +1183,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 }
                 if (!ft_ptr)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: no instance method " << method_name << "\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 FuncT &ft = *ft_ptr;
@@ -1139,7 +1233,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     int userArgCnt = static_cast<int>(argCount);
                     if (pi < userArgCnt + 1 && (variadicIndex == -1 || pi < variadicIndex))
                     {
-                        continue; // 已经传参
+                        continue;
                     }
                     if (pinfo.default_expr != nullptr)
                     {
@@ -1149,7 +1243,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     }
                     else
                     {
+                        Console::setColor(Console::Color::Red);
                         std::cerr << "[" << ln << "] Runtime error: method missing argument '" << pinfo.name << "' no default\n";
+                        Console::setColor(Console::Color::Reset);
                         return RuntimeVal();
                     }
                 }
@@ -1165,7 +1261,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 FuncT *ft_ptr = lookup_static_method(cm, method_name);
                 if (!ft_ptr)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: no static method " << method_name << " on class\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 FuncT &ft = *ft_ptr;
@@ -1197,7 +1295,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                         fscope.set(params[i].name, std::move(argVal));
                     }
                 }
-                // 填充默认参数，静态方法无self
+
                 for (int pi = 0; pi < (int)params.size(); pi++)
                 {
                     FuncParamInfo &pinfo = params[pi];
@@ -1219,7 +1317,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     }
                     else
                     {
+                        Console::setColor(Console::Color::Red);
                         std::cerr << "[" << ln << "] Runtime error: static method missing argument '" << pinfo.name << "' no default\n";
+                        Console::setColor(Console::Color::Reset);
                         return RuntimeVal();
                     }
                 }
@@ -1228,7 +1328,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 eval(func_body, &fscope, child_frame);
                 return RuntimeVal(std::move(child_frame.ret_val));
             }
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << ln << "] Runtime error: member call requires object/class\n";
+            Console::setColor(Console::Color::Reset);
             return RuntimeVal();
         }
         case ASTNode::CLASS_DEF:
@@ -1278,13 +1380,17 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             RuntimeVal *cls_val_ptr = scope->get(node->val);
             if (!cls_val_ptr)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: new requires class\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             auto *cls_ptr = cls_val_ptr->as_classmeta();
             if (!cls_ptr)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: new requires class\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             std::shared_ptr<ClassMeta> meta_raw = cls_ptr->value;
@@ -1312,7 +1418,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     }
                 }
                 Array restArr;
-                // init第一个参数self，用户参数从paramIdx=1开始
+
                 for (size_t argIdx = 0; argIdx < argCount; argIdx++)
                 {
                     EvalFrame arg_frame = EvalFrame::make_expr_frame();
@@ -1327,7 +1433,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                         fscope.set(params[paramIdx].name, std::move(argVal));
                     }
                 }
-                // 填充默认参数，跳过self(pi=0)
+
                 for (int pi = 1; pi < (int)params.size(); pi++)
                 {
                     FuncParamInfo &pinfo = params[pi];
@@ -1350,7 +1456,10 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     }
                     else
                     {
+
+                        Console::setColor(Console::Color::Red);
                         std::cerr << "[" << ln << "] Runtime error: constructor init missing argument '" << pinfo.name << "' no default\n";
+                        Console::setColor(Console::Color::Reset);
                         return RuntimeVal();
                     }
                 }
@@ -1437,7 +1546,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 if (std::cin.fail())
                 {
                     std::cin.clear();
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "Input Error!\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal("");
                 }
                 return RuntimeVal(s);
@@ -1449,7 +1560,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 if (std::cin.fail())
                 {
                     std::cin.clear();
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "Input Error!\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal("");
                 }
                 return RuntimeVal(s);
@@ -1458,7 +1571,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (node->children.size() != 1)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: tonum() expects exactly one argument\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 EvalFrame arg_frame = EvalFrame::make_expr_frame();
@@ -1466,7 +1581,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *sptr = arg.as_str();
                 if (!sptr)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: tonum() argument must be string\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 BigDecimal tempNum;
@@ -1476,7 +1593,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 }
                 catch (...)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: tonum() invalid number string: " << sptr->value << "\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 return RuntimeVal(std::move(tempNum));
@@ -1485,7 +1604,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (node->children.size() != 1)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: tostring() expects exactly one argument\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 EvalFrame arg_frame = EvalFrame::make_expr_frame();
@@ -1496,7 +1617,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (node->children.size() != 0)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: time() takes no arguments\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 auto now = std::chrono::system_clock::now();
@@ -1507,7 +1630,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (node->children.size() != 0)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: time_ms() takes no arguments\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 auto now = std::chrono::system_clock::now();
@@ -1518,7 +1643,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (node->children.size() != 1)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: sleep() expects 1 argument(ms)\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 EvalFrame arg_frame = EvalFrame::make_expr_frame();
@@ -1526,13 +1653,17 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *numptr = arg.as_num();
                 if (!numptr)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: sleep() argument must be number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 size_t ms;
                 if (!safe_to_size_t(numptr->value, ms))
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: sleep() invalid millisecond value\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(ms));
@@ -1542,7 +1673,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (!node->children.empty())
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: args() takes no arguments\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 Array arr;
@@ -1556,7 +1689,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (node->children.size() != 2)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: conc() expects exactly two arguments\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 EvalFrame a_frame = EvalFrame::make_expr_frame();
@@ -1567,7 +1702,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *arr0 = arg0.as_array();
                 if (!arr0)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: conc() first argument must be array\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 Array res = arr0->value;
@@ -1589,7 +1726,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (node->children.size() != 1)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: len() expects exactly one argument\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 EvalFrame arg_frame = EvalFrame::make_expr_frame();
@@ -1604,7 +1743,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 }
                 else
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: len() expects array or string\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
             }
@@ -1612,7 +1753,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (!node->children.empty())
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: pi() takes no arguments\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 return RuntimeVal(BigDecimal("3.14159265358979323846264338327950288419716939937510"));
@@ -1621,7 +1764,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (node->children.size() != 1)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: sqrt() expects exactly one argument\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 EvalFrame arg_frame = EvalFrame::make_expr_frame();
@@ -1629,12 +1774,16 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *numptr = arg.as_num();
                 if (!numptr)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: sqrt() argument must be number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 if (numptr->value.compare(BigDecimal("0")) < 0)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: sqrt() negative input\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 double d = std::stod(numptr->value.to_string());
@@ -1645,7 +1794,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (node->children.size() != 1)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: abs() expects exactly one argument\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 EvalFrame arg_frame = EvalFrame::make_expr_frame();
@@ -1653,7 +1804,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *numptr = arg.as_num();
                 if (!numptr)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: abs() argument must be number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 BigDecimal v = numptr->value;
@@ -1664,7 +1817,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (node->children.size() != 2)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: pow() expects exactly two arguments(base, exp)\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 EvalFrame a_frame = EvalFrame::make_expr_frame();
@@ -1675,7 +1830,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *exp_ptr = arg1.as_num();
                 if (!base_ptr || !exp_ptr)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: pow() arguments must be number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 double base = std::stod(base_ptr->value.to_string());
@@ -1687,7 +1844,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             {
                 if (node->children.size() != 1)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: cbrt() expects exactly one argument\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 EvalFrame arg_frame = EvalFrame::make_expr_frame();
@@ -1695,7 +1854,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 auto *numptr = arg.as_num();
                 if (!numptr)
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: cbrt() argument must be number\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
                 double d = std::stod(numptr->value.to_string());
@@ -1735,14 +1896,18 @@ Eastern mysticism:
                 |********|
                 ----------
                     )XXX";
+                Console::setColor(Console::Color::Green);
                 std::cout << eB << std::endl;
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             auto fv = scope->get(node->val)->clone();
             auto *fptr = fv.as_func();
             if (!fptr)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << ln << "] Runtime error: not a function\n";
+                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             Scope fscope(scope);
@@ -1795,7 +1960,9 @@ Eastern mysticism:
                 }
                 else
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << ln << "] Runtime error: function missing argument for '" << pinfo.name << "' (no default value)\n";
+                    Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
             }
@@ -1818,17 +1985,23 @@ Eastern mysticism:
             frame.continue_flag = true;
             return RuntimeVal();
         default:
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << ln << "] Runtime error: unknown AST node\n";
+            Console::setColor(Console::Color::Reset);
             return RuntimeVal();
         }
     }
     catch (std::runtime_error &ex)
     {
+        Console::setColor(Console::Color::Red);
         std::cerr << "[" << ln << "] Runtime exception: " << ex.what() << "\n";
+        Console::setColor(Console::Color::Reset);
     }
     catch (...)
     {
+        Console::setColor(Console::Color::Red);
         std::cerr << "[" << ln << "] Runtime unknown exception\n";
+        Console::setColor(Console::Color::Reset);
     }
     return RuntimeVal();
 }

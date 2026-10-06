@@ -880,7 +880,9 @@ std::unique_ptr<ASTNode> Parser::parse_switch()
             next_tok();
             if (seen_default)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << case_ln << "] Syntax error: multiple default in one switch\n";
+                Console::setColor(Console::Color::Reset);
             }
             seen_default = true;
         }
@@ -890,7 +892,9 @@ std::unique_ptr<ASTNode> Parser::parse_switch()
         }
         else
         {
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << tok.line << "] Syntax error: expect case / default inside switch begin\n";
+            Console::setColor(Console::Color::Reset);
             break;
         }
 
@@ -903,7 +907,9 @@ std::unique_ptr<ASTNode> Parser::parse_switch()
                 std::string lit_key = pattern_expr->literal.to_string();
                 if (case_literals.count(lit_key))
                 {
+                    Console::setColor(Console::Color::Red);
                     std::cerr << "[" << case_ln << "] Syntax error: duplicate case literal " << lit_key << "\n";
+                    Console::setColor(Console::Color::Reset);
                 }
                 case_literals.insert(lit_key);
             }
@@ -960,7 +966,9 @@ std::unique_ptr<ASTNode> Parser::parse_lambda()
             next_tok();
             if (tok.type != IDENT)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << tok.line << "] Syntax error: ... requires identifier\n";
+                Console::setColor(Console::Color::Reset);
             }
             auto pd = std::make_unique<ASTNode>(ASTNode::PARAM_DEF);
             auto v = std::make_unique<ASTNode>(ASTNode::VAR);
@@ -992,7 +1000,9 @@ std::unique_ptr<ASTNode> Parser::parse_lambda()
     {
         if (node->kind == ASTNode::FUNC_DEF || node->kind == ASTNode::LAMBDA_EXPR)
         {
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << node->line << "] Syntax error: nested function/lambda is not allowed\n";
+            Console::setColor(Console::Color::Reset);
             return false;
         }
         for (auto &ch : node->children)
@@ -1081,7 +1091,9 @@ std::unique_ptr<ASTNode> Parser::parse_func()
             next_tok();
             if (tok.type != IDENT)
             {
+                Console::setColor(Console::Color::Red);
                 std::cerr << "[" << tok.line << "] Syntax error: ... requires identifier\n";
+                Console::setColor(Console::Color::Reset);
             }
             auto pd = std::make_unique<ASTNode>(ASTNode::PARAM_DEF);
             auto varNode = std::make_unique<ASTNode>(ASTNode::VAR);
@@ -1140,7 +1152,11 @@ std::unique_ptr<ASTNode> Parser::parse_block()
         blk->children.push_back(parse_stmt());
     }
     if (!expect(T_END))
+    {
+        Console::setColor(Console::Color::Red);
         std::cerr << "[" << tok.line << "] Syntax error: missing 'end' for block\n";
+        Console::setColor(Console::Color::Reset);
+    }
     return blk;
 }
 std::unique_ptr<ASTNode> Parser::parse_expr()
@@ -1361,7 +1377,9 @@ std::unique_ptr<ASTNode> Parser::parse_primary()
         return parse_lambda();
     }
     default:
+        Console::setColor(Console::Color::Red);
         std::cerr << "[" << ln << "] Parse error: bad expression\n";
+        Console::setColor(Console::Color::Reset);
         next_tok();
         return std::make_unique<ASTNode>(ASTNode::LIT_NUM);
     }
