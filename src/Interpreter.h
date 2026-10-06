@@ -579,12 +579,12 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             }
             return RuntimeVal();
         }
-       case ASTNode::EMIT_EXPR:
+        case ASTNode::EMIT_EXPR:
         {
             EvalFrame obj_frame = EvalFrame::make_expr_frame();
             auto signalObjVal = eval(node->children[0].get(), scope, obj_frame);
             auto *signalObj = signalObjVal.as_object();
-                if (!signalObj)
+            if (!signalObj)
             {
                 std::cerr << "[" << ln << "] Runtime error: emit requires object instance\n";
                 return RuntimeVal();
