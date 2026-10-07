@@ -2,6 +2,9 @@
 #include "prepross.h"
 int main(int argc, char *argv[])
 {
+    #ifdef _WIN32
+    std::system("chcp 65001 > nul");
+    #endif
     int program = 1;
     if (argc != 2)
     {

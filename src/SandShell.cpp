@@ -23,7 +23,7 @@ static void repl_main(const std::string &exePathRaw)
     std::cout << "SandScript ";
     Console::setColor(Console::Color::Yellow);
     std::cout << "Shell \n";
-    Console::setColor(Console::Color::Magenta);
+    Console::setColor(Console::Color::BrightGreen);
     std::cout << " enter exit/quit to exit" << std::endl;
     std::cout << " enter copyright to get license information" << std::endl;
     std::cout << " enter help to get help information" << std::endl;
@@ -123,6 +123,9 @@ static void repl_main(const std::string &exePathRaw)
 
 int main(int argc, char **argv)
 {
+#ifdef _WIN32
+    std::system("chcp 65001 > nul");
+#endif
     repl_main(argv[0]);
     return 0;
 }

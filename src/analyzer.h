@@ -461,7 +461,9 @@ struct Lexer
                 return Token{OR_OR, "||", idx - 2, ln};
             }
         }
+        Console::setColor(Console::Color::Red);
         std::cerr << "[" << ln << "] Lexer error: unknown character '" << c << "'\n";
+        Console::setColor(Console::Color::Reset);
         consume();
         return next();
     }
@@ -507,7 +509,9 @@ struct Parser
             next_tok();
             return true;
         }
+        Console::setColor(Console::Color::Red);
         std::cerr << "[" << tok.line << "] Syntax error: unexpected token '" << tok.val << "'\n";
+        Console::setColor(Console::Color::Reset);
         return false;
     }
     std::unique_ptr<ASTNode> parse_program();
@@ -569,7 +573,9 @@ std::unique_ptr<ASTNode> Parser::parse_stmt()
         n->line = ln;
         if (tok.type != STR)
         {
+            Console::setColor(Console::Color::Red);
             std::cerr << "[" << tok.line << "] Syntax error: expect string filename for from...import\n";
+            Console::setColor(Console::Color::Reset);
             return std::make_unique<ASTNode>(ASTNode::PROGRAM);
         }
         n->val = tok.val;
