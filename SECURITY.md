@@ -5,7 +5,7 @@
 | Version | Supported          |
 | ------- | ------------------ |
 | main    | :white_check_mark: |
-| < 1.9-beta   | :x:                |
+| < main   | :x:                |
 
 > This project is still under active early development.
 > Only the latest `main` branch receives security fixes.
