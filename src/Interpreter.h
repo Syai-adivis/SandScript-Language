@@ -60,7 +60,10 @@ struct EvalFrame
 struct Interpreter
 {
     Scope global;
-
+    Console::Color colorMode;
+    Interpreter(){
+        colorMode = Console::Color::Reset;
+    }
     FuncT *lookup_instance_method_from(ClassMeta *start_meta, const std::string &name);
     FuncT *lookup_instance_method(ClassMeta *meta, const std::string &name);
     FuncT *lookup_static_method(ClassMeta *meta, const std::string &name);
@@ -1499,11 +1502,11 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     auto arg = eval(child.get(), scope, arg_frame);
                     if (arg.type() == RtKind::STRING)
                     {
-                        std::cout << arg.as_str()->value;
+                        Console::printColored(arg.as_str()->value,colorMode);
                     }
                     else
                     {
-                        std::cout << arg.to_string();
+                        Console::printColored(arg.to_string(),colorMode);
                     }
                 }
                 std::cout.flush();
@@ -1517,15 +1520,48 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     auto arg = eval(child.get(), scope, arg_frame);
                     if (arg.type() == RtKind::STRING)
                     {
-                        std::cout << arg.as_str()->value;
+                        Console::printColored(arg.as_str()->value,colorMode);
                     }
                     else
                     {
-                        std::cout << arg.to_string();
+                        Console::printColored(arg.to_string(),colorMode);
                     }
                 }
                 std::cout << "\n";
                 std::cout.flush();
+                return RuntimeVal();
+            }
+            if (node->val == "setOutputColor")
+            {
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                auto arg = eval(node->children[0].get(), scope, arg_frame);
+                auto *strptr = arg.as_str();
+                if (!strptr)
+                {
+                    Console::setColor(Console::Color::Red);
+                    std::cerr << "[" << ln << "] Runtime error: system() argument must be string\n";
+                    Console::setColor(Console::Color::Reset);
+                    return RuntimeVal();
+                }
+                if (strptr->value == "Red"){
+                    colorMode = Console::Color::Red;
+                }else if (strptr->value == "Yellow"){
+                    colorMode = Console::Color::Yellow;
+                }else if (strptr->value == "Green"){
+                    colorMode = Console::Color::Green;
+                }else if (strptr->value == "Cyan"){
+                    colorMode = Console::Color::Cyan;
+                }else if (strptr->value == "Magenta"){
+                    colorMode = Console::Color::Magenta;
+                }else if (strptr->value == "BrightGreen"){
+                    colorMode = Console::Color::BrightGreen;
+                }else if (strptr->value == "BrightRed"){
+                    colorMode = Console::Color::BrightRed;
+                }else if (strptr->value == "Reset"){
+                    colorMode = Console::Color::Reset;
+                }else if (strptr->value == "White"){
+                    colorMode = Console::Color::White;
+                }
                 return RuntimeVal();
             }
             if (node->val == "prminput")
@@ -1862,6 +1898,28 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 double d = std::stod(numptr->value.to_string());
                 double res = std::cbrt(d);
                 return RuntimeVal(BigDecimal(std::to_string(res)));
+            }
+            if (node->val == "system")
+            {
+                if (node->children.size() != 1)
+                {
+                    Console::setColor(Console::Color::Red);
+                    std::cerr << "[" << ln << "] Runtime error: system() expects exactly one argument\n";
+                    Console::setColor(Console::Color::Reset);
+                    return RuntimeVal();
+                }
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                auto arg = eval(node->children[0].get(), scope, arg_frame);
+                auto *strptr = arg.as_str();
+                if (!strptr)
+                {
+                    Console::setColor(Console::Color::Red);
+                    std::cerr << "[" << ln << "] Runtime error: system() argument must be string\n";
+                    Console::setColor(Console::Color::Reset);
+                    return RuntimeVal();
+                }
+                std::system(strptr->value.c_str());
+                return RuntimeVal();
             }
             if (node->val == "eBuddha")
             {

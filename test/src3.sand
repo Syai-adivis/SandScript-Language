@@ -1,0 +1,6 @@
+outputLine("Default");
+setOutputColor("Red");
+outputLine("Red");
+setOutputColor("Reset");
+outputLine("Default");
+system("SandShell");

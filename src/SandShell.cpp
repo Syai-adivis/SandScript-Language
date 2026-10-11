@@ -19,9 +19,9 @@ static int count_token(const std::string &buf, const std::string &tok)
 
 static void repl_main(const std::string &exePathRaw)
 {
-    Console::setColor(Console::Color::Green);
-    std::cout << "SandScript ";
     Console::setColor(Console::Color::Yellow);
+    std::cout << "SandScript ";
+    Console::setColor(Console::Color::Green);
     std::cout << "Shell \n";
     Console::setColor(Console::Color::BrightGreen);
     std::cout << " enter exit/quit to exit" << std::endl;
