@@ -22,11 +22,11 @@ static void repl_main(const std::string &exePathRaw)
     Console::setColor(Console::Color::Yellow);
     std::cout << "SandScript ";
     Console::setColor(Console::Color::Green);
-    std::cout << "Shell \n";
+    std::cout << "Shell ";
+    Console::setColor(Console::Color::Magenta);
+    std::cout << "2.6.0";
     Console::setColor(Console::Color::BrightGreen);
-    std::cout << " enter exit/quit to exit" << std::endl;
-    std::cout << " enter copyright to get license information" << std::endl;
-    std::cout << " enter help to get help information" << std::endl;
+    std::cout << " (enter exit/quit to exit | enter copyright to get license information | enter help to get help information)" << std::endl;
     Console::setColor(Console::Color::Reset);
     Interpreter interp;
     fs::path exePath = fs::absolute(exePathRaw);

@@ -262,6 +262,10 @@ struct Lexer
             t = T_NAMESPACE;
         else if (word == "emit")
             t = T_EMIT;
+        else if (word == "true")
+            return Token{NUM, "1", start, ln};
+        else if (word == "false")
+            return Token{NUM, "0", start, ln};
         return Token{t, word, start, ln};
     }
     Token read_num()
