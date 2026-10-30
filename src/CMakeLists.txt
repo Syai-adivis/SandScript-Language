@@ -1,38 +1,18 @@
-CXX := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -O2
+cmake_minimum_required(VERSION 3.16)
+project(SandScript VERSION 2.5.0 LANGUAGES CXX)
 
-# 头文件列表，用于依赖检测
-HEADERS := \
-	RuntimeValue.h \
-	analyzer.h \
-	includes.h \
-	Interpreter.h \
-	prepross.h \
-	SetColor.h
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(HEADERS RuntimeValue.h analyzer.h includes.h Interpreter.h prepross.h SetColor.h)
+set(COMMON_SRCS prepross.cpp)
+set(TARGETS Sandi SandShell)
+add_executable(Sandi Sandi.cpp prepross.cpp)
+add_executable(SandShell SandShell.cpp prepross.cpp)
 
-# 公共实现源文件
-COMMON_SRCS := prepross.cpp
-
-# 可执行目标
-TARGETS := Sandi SandShell
-
-.PHONY: all clean
-
-all: $(TARGETS)
-
-# Sandi 可执行文件
-Sandi: Sandi.cpp $(COMMON_SRCS) $(HEADERS)
-	$(CXX) $(CXXFLAGS) Sandi.cpp $(COMMON_SRCS) -o $@
-
-# SandShell 可执行文件
-SandShell: SandShell.cpp $(COMMON_SRCS) $(HEADERS)
-	$(CXX) $(CXXFLAGS) SandShell.cpp $(COMMON_SRCS) -o $@
-
-clean:
-# Windows MinGW环境
-ifeq ($(OS),Windows_NT)
-	-del /f /q Sandi.exe SandShell.exe
-else
-# Linux/macOS
-	rm -f Sandi SandShell
-endif
+if(MSVC)
+    target_compile_options(Sandi PRIVATE /W4 /O2)
+    target_compile_options(SandShell PRIVATE /W4 /O2)
+else()
+    target_compile_options(Sandi PRIVATE -Wall -Wextra -O2)
+    target_compile_options(SandShell PRIVATE -Wall -Wextra -O2)
+endif()
