@@ -1921,6 +1921,33 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 std::system(strptr->value.c_str());
                 return RuntimeVal();
             }
+            if (node->val == "eSoviet")
+            {
+                std::string eS = R"XXX(
+                    ☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭
+                    ☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭
+                            ☭☭☭☭
+                            ☭☭☭☭                 ☭
+                            ☭☭☭☭                  ☭☭
+                            ☭☭☭☭                  ☭☭☭
+    ☭☭☭☭☭☭☭☭☭☭          ☭☭☭☭                   ☭☭☭☭
+    ☭☭☭☭☭☭☭☭☭☭          ☭☭☭☭                   ☭☭☭☭
+    ☭☭☭☭☭☭☭☭☭☭☭         ☭☭☭☭                   ☭☭☭☭
+                ☭☭☭☭☭     ☭☭☭☭                  ☭☭☭☭
+                 ☭☭☭☭☭    ☭☭☭☭                ☭☭☭☭
+                  ☭☭☭☭☭   ☭☭☭☭              ☭☭☭☭
+                    ☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭
+                     ☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭
+                        ☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭
+                            ☭☭☭☭
+                            ☭☭☭☭
+                            ☭☭☭☭
+                    )XXX";
+                Console::setColor(Console::Color::Red);
+                std::cout << eS << std::endl;
+                Console::setColor(Console::Color::Red);
+                return RuntimeVal();
+            }
             if (node->val == "eBuddha")
             {
                 std::string eB = R"XXX(
