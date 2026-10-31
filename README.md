@@ -23,6 +23,31 @@ Run the Interpreter:
 Sandi hello.sand
 ```
 
+### Qt6 Widgets (Optional)
+
+Configure the interpreter with Qt6 Widgets support enabled:
+
+```
+cmake -S src -B build-qt -DSAND_ENABLE_QT_WIDGETS=ON -DCMAKE_PREFIX_PATH=C:/Qt/6.12.0/mingw_64
+cmake --build build-qt
+```
+
+When enabled, Sand widget declarations create Qt widgets. Supported types are
+`Window`, `Widget`, `Label`, `Button`, `TextBox`, and `CheckBox`. Properties
+include `x`, `y`, `width`, `height`, `isShow`, `visible`, `enabled`, `text`, and
+`title`.
+
+```
+widget Window begin
+    property title = "Example";
+    widget Label begin
+        property x = 50;
+        property y = 50;
+        property text = "Hello World.";
+    end
+end
+```
+
 ## 📂 Project Structure
 
 ```

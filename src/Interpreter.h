@@ -1,4 +1,7 @@
 #include "analyzer.h"
+#ifdef SAND_ENABLE_QT_WIDGETS
+#include "qt_widget_runtime.h"
+#endif
 
 static bool safe_to_size_t(const BigDecimal &num, size_t &out)
 {
@@ -61,9 +64,16 @@ struct Interpreter
 {
     Scope global;
     Console::Color colorMode;
+#ifdef SAND_ENABLE_QT_WIDGETS
+    QtWidgetRuntime qtWidgetRuntime;
+    std::vector<QWidget *> widgetStack;
+#endif
     Interpreter(){
         colorMode = Console::Color::Reset;
     }
+#ifdef SAND_ENABLE_QT_WIDGETS
+    int runWidgets() { return qtWidgetRuntime.runEventLoop(); }
+#endif
     FuncT *lookup_instance_method_from(ClassMeta *start_meta, const std::string &name);
     FuncT *lookup_instance_method(ClassMeta *meta, const std::string &name);
     FuncT *lookup_static_method(ClassMeta *meta, const std::string &name);
@@ -239,6 +249,41 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             }
             return res;
         }
+#ifdef SAND_ENABLE_QT_WIDGETS
+        case ASTNode::WIDGET_DECL:
+        {
+            QWidget *parent = widgetStack.empty() ? nullptr : widgetStack.back();
+            QWidget *widget = qtWidgetRuntime.createWidget(node->val, parent);
+            widgetStack.push_back(widget);
+            try
+            {
+                for (auto &child : node->children)
+                {
+                    if (child->kind == ASTNode::WIDGET_PROP)
+                    {
+                        EvalFrame propertyFrame = EvalFrame::make_expr_frame();
+                        RuntimeVal value = eval(child->children[0].get(), scope, propertyFrame);
+                        qtWidgetRuntime.setProperty(widget, child->val, value);
+                    }
+                    else
+                    {
+                        eval(child.get(), scope, frame);
+                    }
+                }
+            }
+            catch (...)
+            {
+                widgetStack.pop_back();
+                throw;
+            }
+            widgetStack.pop_back();
+            if (!parent)
+                qtWidgetRuntime.show(widget);
+            return RuntimeVal();
+        }
+        case ASTNode::WIDGET_PROP:
+            throw std::runtime_error("widget property used outside a widget declaration");
+#endif
         case ASTNode::IMPORT:
         {
             import_file(node->val);
@@ -1603,7 +1648,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 }
                 return RuntimeVal(s);
             }
-            if (node->val == "tonum")
+            if (node->val == "number")
             {
                 if (node->children.size() != 1)
                 {
@@ -1636,7 +1681,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 }
                 return RuntimeVal(std::move(tempNum));
             }
-            if (node->val == "tostring")
+            if (node->val == "string")
             {
                 if (node->children.size() != 1)
                 {
@@ -1919,71 +1964,6 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     return RuntimeVal();
                 }
                 std::system(strptr->value.c_str());
-                return RuntimeVal();
-            }
-            if (node->val == "eSoviet")
-            {
-                std::string eS = R"XXX(
-                    ☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭
-                    ☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭
-                            ☭☭☭☭
-                            ☭☭☭☭                 ☭
-                            ☭☭☭☭                  ☭☭
-                            ☭☭☭☭                  ☭☭☭
-    ☭☭☭☭☭☭☭☭☭☭          ☭☭☭☭                   ☭☭☭☭
-    ☭☭☭☭☭☭☭☭☭☭          ☭☭☭☭                   ☭☭☭☭
-    ☭☭☭☭☭☭☭☭☭☭☭         ☭☭☭☭                   ☭☭☭☭
-                ☭☭☭☭☭     ☭☭☭☭                  ☭☭☭☭
-                 ☭☭☭☭☭    ☭☭☭☭                ☭☭☭☭
-                  ☭☭☭☭☭   ☭☭☭☭              ☭☭☭☭
-                    ☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭
-                     ☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭
-                        ☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭☭
-                            ☭☭☭☭
-                            ☭☭☭☭
-                            ☭☭☭☭
-                    )XXX";
-                Console::setColor(Console::Color::Red);
-                std::cout << eS << std::endl;
-                Console::setColor(Console::Color::Red);
-                return RuntimeVal();
-            }
-            if (node->val == "eBuddha")
-            {
-                std::string eB = R"XXX(
-Eastern mysticism:
-                _ooOoo_
-               o8888888o
-               88" . "88
-               (| -_- |)
-               O\  =  /O
-            ____/`---'\____
-          .'  \\|     |//  `.
-         /  \\|||  :  |||//  \
-        /  _||||| -:- |||||-  \
-        |   | \\\  -  /// |   |
-        | \_|  ''\---/''  |   |
-         \  .-\__ `-` ___/-. /
-        ___`. .'  /--\  `. .'___
-    ."" '<  `.___\_<|>_/___.' >' "".
-   | |:`-`. `_. `\`.;`\ _ /`;.`/-`:| |
-   \  \ `_.   \_ __\ /__ _/   .-` /  /
-====`-.____`.___ \_____/___.-`___.-'=====
-                  | | |
-                 `=---='
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-          佛祖保佑       永无BUG
-          用例全过       解析正确
-          编译通过       运行正常
-                ----------
-                |********|
-                |********|
-                |********|
-                ----------
-                    )XXX";
-                Console::setColor(Console::Color::Green);
-                std::cout << eB << std::endl;
-                Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
             auto fv = scope->get(node->val)->clone();

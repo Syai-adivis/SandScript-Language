@@ -3,11 +3,22 @@ project(SandScript VERSION 2.6.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(HEADERS RuntimeValue.h analyzer.h includes.h Interpreter.h prepross.h SetColor.h)
+option(SAND_ENABLE_QT_WIDGETS "Enable Qt6 Widgets support for Sand widget declarations" OFF)
+
+set(HEADERS RuntimeValue.h analyzer.h includes.h Interpreter.h prepross.h SetColor.h qt_widget_runtime.h)
 set(COMMON_SRCS prepross.cpp)
 set(TARGETS Sandi SandShell)
 add_executable(Sandi Sandi.cpp prepross.cpp)
 add_executable(SandShell SandShell.cpp prepross.cpp)
+
+if(SAND_ENABLE_QT_WIDGETS)
+    find_package(Qt6 REQUIRED COMPONENTS Widgets)
+    foreach(target IN LISTS TARGETS)
+        target_sources(${target} PRIVATE qt_widget_runtime.cpp qt_widget_runtime.h)
+        target_compile_definitions(${target} PRIVATE SAND_ENABLE_QT_WIDGETS)
+        target_link_libraries(${target} PRIVATE Qt6::Widgets)
+    endforeach()
+endif()
 
 if(MSVC)
     target_compile_options(Sandi PRIVATE /W4 /O2)

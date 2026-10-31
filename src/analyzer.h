@@ -40,7 +40,9 @@ public:
         SLOT_CONNECT_EXPR,
         SLOT_DISCONNECT_EXPR,
         EMIT_EXPR,
-        LAMBDA_EXPR
+        LAMBDA_EXPR,
+        WIDGET_DECL,
+        WIDGET_PROP
     } kind;
     std::vector<std::unique_ptr<ASTNode>> children;
     std::string val;
@@ -52,6 +54,7 @@ public:
 // ===================== TokenType =====================
 enum TokenType
 {
+    T_PROPERTY,
     T_EOF,
     NUM,
     STR,
@@ -114,7 +117,8 @@ enum TokenType
     CONNECT,
     DISCONNECT,
     T_EMIT,
-    DOT
+    DOT,
+    T_WIDGET
 };
 struct Token
 {
@@ -262,6 +266,10 @@ struct Lexer
             t = T_NAMESPACE;
         else if (word == "emit")
             t = T_EMIT;
+        else if (word == "widget")
+            t = T_WIDGET;
+        else if (word == "property")
+            t = T_PROPERTY;
         else if (word == "true")
             return Token{NUM, "1", start, ln};
         else if (word == "false")
@@ -542,6 +550,8 @@ struct Parser
     std::unique_ptr<ASTNode> parse_switch();
     std::unique_ptr<ASTNode> parse_namespace();
     std::unique_ptr<ASTNode> parse_slot_op(std::unique_ptr<ASTNode> lhs, size_t ln);
+    std::unique_ptr<ASTNode> parse_widget(std::unique_ptr<ASTNode> lhs, size_t ln);
+    std::unique_ptr<ASTNode> parse_widget_prop(std::unique_ptr<ASTNode> lhs, size_t ln);
 };
 std::unique_ptr<ASTNode> Parser::parse_program()
 {
@@ -568,8 +578,36 @@ std::unique_ptr<ASTNode> Parser::parse_stmt()
         return parse_func();
     case T_CLASS:
         return parse_class();
+    case T_PROPERTY:
+    {
+        next_tok();
+        if (tok.type != IDENT)
+        {
+            expect(IDENT);
+            return std::make_unique<ASTNode>(ASTNode::WIDGET_PROP);
+        }
+        auto property_name = std::make_unique<ASTNode>(ASTNode::VAR);
+        property_name->val = tok.val;
+        property_name->line = tok.line;
+        next_tok();
+        return parse_widget_prop(std::move(property_name), ln);
+    }
+    case T_WIDGET:
+    {
+        next_tok();
+        if (tok.type != IDENT)
+        {
+            expect(IDENT);
+            return std::make_unique<ASTNode>(ASTNode::WIDGET_DECL);
+        }
+        auto widget_type = std::make_unique<ASTNode>(ASTNode::VAR);
+        widget_type->val = tok.val;
+        widget_type->line = tok.line;
+        next_tok();
+        return parse_widget(std::move(widget_type), ln);
+    }
     // case T_NEW:
-    // return parse_new();
+    // return parse_new();*extra
     case T_FROM:
     {
         next_tok();
@@ -775,6 +813,31 @@ std::unique_ptr<ASTNode> Parser::parse_stmt()
     }
     }
 }
+
+std::unique_ptr<ASTNode> Parser::parse_widget(std::unique_ptr<ASTNode> lhs, size_t ln)
+{
+    auto node = std::make_unique<ASTNode>(ASTNode::WIDGET_DECL);
+    node->val = lhs->val;
+    node->line = ln;
+    auto block = parse_block();
+    for (auto &child : block->children)
+    {
+        node->children.push_back(std::move(child));
+    }
+    return node;
+}
+
+std::unique_ptr<ASTNode> Parser::parse_widget_prop(std::unique_ptr<ASTNode> lhs, size_t ln)
+{
+    auto node = std::make_unique<ASTNode>(ASTNode::WIDGET_PROP);
+    node->val = lhs->val;
+    node->line = ln;
+    expect(ASSIGN);
+    node->children.push_back(parse_expr());
+    expect(SEMI);
+    return node;
+}
+
 std::unique_ptr<ASTNode> Parser::parse_namespace()
 {
     size_t ln = tok.line;

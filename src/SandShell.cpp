@@ -99,6 +99,9 @@ static void repl_main(const std::string &exePathRaw)
             auto ast = parse_source(processed);
             EvalFrame frame;
             RuntimeVal ret = interp.eval(ast.get(), &interp.global, frame);
+#ifdef SAND_ENABLE_QT_WIDGETS
+            interp.runWidgets();
+#endif
             if (ret.type() != RtKind::NIL)
             {
                 Console::setColor(Console::Color::Cyan);

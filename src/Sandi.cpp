@@ -433,6 +433,9 @@ non_ascii      ::= #x80 ... #xFFFF ;
         std::cerr << "UNKNOWN EXCEPTION CAUGHT\n";
         Console::setColor(Console::Color::Reset);
     }
+#ifdef SAND_ENABLE_QT_WIDGETS
+    interp.runWidgets();
+#endif
     std::cout << std::flush;
     return 0;
 }
