@@ -292,8 +292,6 @@ stmt           ::= if_stmt
                  | return_stmt
                  | break_stmt
                  | continue_stmt
-                 | print_stmt
-                 | input_stmt
                  | assign_stmt
                  | compound_assign_stmt
                  | incdec_stmt
@@ -301,6 +299,7 @@ stmt           ::= if_stmt
                  | member_assign_stmt
                  | switch_stmt
                  | emit_stmt
+                 | widget_stmt
                  | expr_stmt ;
 
 namespace_stmt ::= "namespace" IDENT "begin" { stmt } "end" ;
@@ -322,6 +321,10 @@ func_def_stmt  ::= "func" IDENT "(" param_list ")" block ;
 param_list     ::= [ param ( "," param )* ] ;
 param          ::= IDENT | "..." IDENT ;
 
+widget_stmt    ::= "widget" IDENT wblock ;
+wblock         ::= "begin" {widget_prop|connect} "end" ;
+widget_prop    ::= "property" assign_stmt ;
+
 class_def_stmt ::= "class" IDENT [ ":" IDENT ] "begin" { class_member } "end" ;
 class_member   ::= [ "static" ] "func" IDENT "(" param_list ")" block ;
 
@@ -329,8 +332,6 @@ import_stmt    ::= "from" STR "import" ";" ;
 return_stmt    ::= "return" expr ";" ;
 break_stmt     ::= "break" ";" ;
 continue_stmt  ::= "continue" ";" ;
-print_stmt     ::= "output" "(" expr ")" ";" ;
-input_stmt     ::= "input" "(" ")" ";" ;
 
 assign_stmt        ::= IDENT "=" expr ";" ;
 compound_assign_stmt ::= lvalue_compound op_compound expr ";" ;
