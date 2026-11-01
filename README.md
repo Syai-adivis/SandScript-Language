@@ -20,7 +20,7 @@ Run the Interpreter:
 
 ```
 # Run your source code
-Sandi hello.sand
+QSandi hello.sand
 ```
 
 ### Qt6 Widgets (Optional)
