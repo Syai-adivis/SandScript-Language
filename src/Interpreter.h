@@ -67,6 +67,7 @@ struct Interpreter
 #ifdef SAND_ENABLE_QT_WIDGETS
     QtWidgetRuntime qtWidgetRuntime;
     std::vector<QWidget *> widgetStack;
+    std::unordered_map<std::string, QPointer<QWidget>> widgetIdentifiers;
 #endif
     Interpreter(){
         colorMode = Console::Color::Reset;
@@ -84,7 +85,39 @@ struct Interpreter
     void import_file(const std::string &path);
 
     RuntimeVal eval(ASTNode *node, Scope *scope, EvalFrame &frame);
+#ifdef SAND_ENABLE_QT_WIDGETS
+    std::unique_ptr<ASTNode> cloneWidgetExpr(const ASTNode *node);
+    void collectWidgetDependencies(const ASTNode *node, std::vector<std::pair<std::string, std::string>> &dependencies);
+#endif
 };
+
+#ifdef SAND_ENABLE_QT_WIDGETS
+std::unique_ptr<ASTNode> Interpreter::cloneWidgetExpr(const ASTNode *node)
+{
+    auto clone = std::make_unique<ASTNode>(node->kind);
+    clone->val = node->val;
+    clone->val2 = node->val2;
+    clone->line = node->line;
+    clone->literal = node->literal.clone();
+    for (const auto &child : node->children)
+        clone->children.push_back(cloneWidgetExpr(child.get()));
+    return clone;
+}
+
+void Interpreter::collectWidgetDependencies(
+    const ASTNode *node,
+    std::vector<std::pair<std::string, std::string>> &dependencies)
+{
+    if (node->kind == ASTNode::MEMBER_ACCESS && !node->children.empty() &&
+        node->children[0]->kind == ASTNode::VAR &&
+        widgetIdentifiers.find(node->children[0]->val) != widgetIdentifiers.end())
+    {
+        dependencies.emplace_back(node->children[0]->val, node->val);
+    }
+    for (const auto &child : node->children)
+        collectWidgetDependencies(child.get(), dependencies);
+}
+#endif
 
 RuntimeVal *Interpreter::get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *scope, EvalFrame &expr_frame, size_t line)
 {
@@ -261,9 +294,46 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 {
                     if (child->kind == ASTNode::WIDGET_PROP)
                     {
+                        if (child->val == "Ident")
+                        {
+                            if (child->children.empty() || child->children[0]->kind != ASTNode::VAR)
+                                throw std::runtime_error("widget Ident must be assigned a bare identifier");
+                            widgetIdentifiers[child->children[0]->val] = widget;
+                            continue;
+                        }
+
                         EvalFrame propertyFrame = EvalFrame::make_expr_frame();
                         RuntimeVal value = eval(child->children[0].get(), scope, propertyFrame);
                         qtWidgetRuntime.setProperty(widget, child->val, value);
+
+                        std::vector<std::pair<std::string, std::string>> dependencies;
+                        collectWidgetDependencies(child->children[0].get(), dependencies);
+                        std::sort(dependencies.begin(), dependencies.end());
+                        dependencies.erase(std::unique(dependencies.begin(), dependencies.end()), dependencies.end());
+                        for (const auto &dependency : dependencies)
+                        {
+                            auto source = widgetIdentifiers.find(dependency.first);
+                            if (source == widgetIdentifiers.end() || source->second.isNull())
+                                throw std::runtime_error("unknown widget identifier '" + dependency.first + "'");
+
+                            const std::shared_ptr<ASTNode> expression(
+                                cloneWidgetExpr(child->children[0].get()).release());
+                            const std::string targetProperty = child->val;
+                            QPointer<QWidget> target = widget;
+                            Scope *propertyScope = scope;
+                            const std::weak_ptr<void> scopeLifetime = scope->lifetime;
+                            qtWidgetRuntime.trackDependency(
+                                source->second,
+                                dependency.second,
+                                [this, expression, target, targetProperty, propertyScope, scopeLifetime]()
+                                {
+                                    if (!target || scopeLifetime.expired())
+                                        return;
+                                    EvalFrame updateFrame = EvalFrame::make_expr_frame();
+                                    RuntimeVal updated = eval(expression.get(), propertyScope, updateFrame);
+                                    qtWidgetRuntime.setProperty(target, targetProperty, updated);
+                                });
+                        }
                     }
                     else
                     {
@@ -1153,6 +1223,18 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
         }
         case ASTNode::MEMBER_ACCESS:
         {
+#ifdef SAND_ENABLE_QT_WIDGETS
+            if (!node->children.empty() && node->children[0]->kind == ASTNode::VAR)
+            {
+                auto widget = widgetIdentifiers.find(node->children[0]->val);
+                if (widget != widgetIdentifiers.end())
+                {
+                    if (widget->second.isNull())
+                        throw std::runtime_error("widget identifier '" + node->children[0]->val + "' refers to a destroyed widget");
+                    return qtWidgetRuntime.propertyValue(widget->second, node->val);
+                }
+            }
+#endif
             EvalFrame base_frame = EvalFrame::make_expr_frame();
             auto base_val = eval(node->children[0].get(), scope, base_frame);
             std::string mem = node->val;

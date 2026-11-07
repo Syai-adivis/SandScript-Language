@@ -33,20 +33,32 @@ cmake --build build-qt
 ```
 
 When enabled, Sand widget declarations create Qt widgets. Supported types are
-`Window`, `Widget`, `Label`, `Button`, `TextBox`, and `CheckBox`. Properties
-include `x`, `y`, `width`, `height`, `isShow`, `visible`, `enabled`, `text`, and
-`title`.
+`Window`, `Widget`, `Label`, `Button`, `TextBox`, `TextArea`, `CheckBox`,
+`RadioButton`, `ComboBox`, `Slider`, `ProgressBar`, `SpinBox`, and `GroupBox`.
+Common properties include `x`, `y`, `width`, `height`, `isShow`, `visible`,
+`enabled`, `text`, and `title`. `Slider`, `ProgressBar`, and `SpinBox` also
+support `value`, `minimum`, and `maximum`; `ComboBox` supports comma-separated
+`items` and `currentIndex`; text inputs support `placeholderText` and
+`readOnly`. Assign an identifier with `property Ident = name;` and reference
+its readable properties in other widget expressions. Expressions are
+reevaluated when a referenced widget property changes, such as when a window is
+resized or a control value changes.
 
 ```
 widget Window begin
+    property Ident = window;
     property title = "Example";
     widget Label begin
-        property x = 50;
-        property y = 50;
+        property x = window.width / 2;
+        property y = window.height / 2;
         property text = "Hello World.";
     end
 end
 ```
+
+`width` is the canonical spelling; `weith` is also accepted as an alias.
+For example, `widget Slider begin property minimum = 0; property maximum = 100;
+property value = 25; end` creates a slider with its initial range and value.
 
 ## 📂 Project Structure
 

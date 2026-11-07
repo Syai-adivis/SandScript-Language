@@ -485,6 +485,7 @@ struct Scope
 {
     std::unordered_map<std::string, RuntimeVal> vars;
     Scope *parent = nullptr;
+    std::shared_ptr<void> lifetime = std::make_shared<int>(0);
     Scope(Scope *p = nullptr) : parent(p) {}
     RuntimeVal *get(const std::string &name)
     {

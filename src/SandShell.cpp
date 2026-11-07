@@ -24,7 +24,7 @@ static void repl_main(const std::string &exePathRaw)
     Console::setColor(Console::Color::Green);
     std::cout << "Shell ";
     Console::setColor(Console::Color::Magenta);
-    std::cout << "2.7.0";
+    std::cout << "2.8.0";
     Console::setColor(Console::Color::BrightGreen);
     std::cout << " (enter exit/quit to exit | enter copyright to get license information | enter help to get help information)" << std::endl;
     Console::setColor(Console::Color::Reset);
@@ -68,13 +68,13 @@ static void repl_main(const std::string &exePathRaw)
         }
         if (trim == "copyright")
         {
-            std::system("Sandi --copyright");
-            std::system("Sandi --copyright-apache");
+            std::system("QSandi --copyright");
+            std::system("QSandi --copyright-apache");
             continue;
         }
         if (trim == "help")
         {
-            std::system("Sandi --help");
+            std::system("QSandi --help");
             continue;
         }
         multi_buf.append(line);
