@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
     if (std::string(argv[1]) == "--version")
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "2.7.0\n";
+        std::cout << "2.8.0\n";
         Console::setColor(Console::Color::Reset);
         return 0;
     }
