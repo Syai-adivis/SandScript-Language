@@ -10,8 +10,8 @@ int main(int argc, char *argv[])
     {
         Console::setColor(Console::Color::Green);
         std::cout << "SandScript interpreter 2.9.0\n";
-        std::cout << "Usage: Sandi script.sand\n";
-        std::cout << "Example: Sandi test.sand\n";
+        std::cout << "Usage: QSandi script.sand\n";
+        std::cout << "Example: QSandi test.sand\n";
         Console::setColor(Console::Color::Reset);
         return 0;
     }
@@ -277,8 +277,8 @@ limitations under the License.
     {
         Console::setColor(Console::Color::Green);
         std::cout << "SandScript interpreter 2.9.0\n";
-        std::cout << "Usage: Sandi script.sand\n";
-        std::cout << "Example: Sandi test.sand\n";
+        std::cout << "Usage: QSandi script.sand\n";
+        std::cout << "Example: QSandi test.sand\n";
         std::string help = R"XXX(
 program        ::= { stmt } ;
 
@@ -322,8 +322,9 @@ param_list     ::= [ param ( "," param )* ] ;
 param          ::= IDENT | "..." IDENT ;
 
 widget_stmt    ::= "widget" IDENT wblock ;
-wblock         ::= "begin" {widget_prop|connect} "end" ;
+wblock         ::= "begin" { widget_prop | property_connect } "end" ;
 widget_prop    ::= "property" assign_stmt ;
+property_connect ::= "slot" IDENT ">>" expr [";"] ;
 
 class_def_stmt ::= "class" IDENT [ ":" IDENT ] "begin" { class_member } "end" ;
 class_member   ::= [ "static" ] "func" IDENT "(" param_list ")" block ;
@@ -343,8 +344,6 @@ expr_stmt      ::= expr | connect | disconnect ";" ;
 
 connect        ::= "(" IDENT ">>" IDENT ")" ;
 disconnect     ::= "(" IDENT "!>" ( "all" | IDENT ) ")" ;
-property_connect        ::= "slot" IDENT ">>" IDENT  ;
-
 block          ::= "begin" { stmt } "end" ;
 
 (* Expression, precedence: low -> high *)
@@ -389,6 +388,7 @@ non_ascii      ::= #x80 ... #xFFFF ;
 (* Keywords: if,else,while,for,in,func,return,break,continue,output,input,range,from,import,class,static,new,super,begin,end,and,or,not,widget,property,slot *)
 (* Operators: ++,--,+=,-=,*=,/=,+,-,*,/,==,!=,<,>,<=,>=,&&,||,!,=,.,... *)
 (* Punctuation: ( ) [ ] { } , : ; *)
+(* A statement-ending semicolon may be omitted before a newline or end of file. *)
         )XXX";
         Console::setColor(Console::Color::Yellow);
         std::cout << help << "\n";

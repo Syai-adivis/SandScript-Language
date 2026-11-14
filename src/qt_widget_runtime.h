@@ -568,7 +568,7 @@ private:
                     }
                     catch (const std::exception &error)
                     {
-                        std::cerr << "Widget dependency update failed: " << error.what() << '\n';
+                        
                     }
                 }
                 dispatchingWidgets.erase(widget);

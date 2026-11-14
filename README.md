@@ -71,6 +71,10 @@ widget Button begin
 end
 ```
 
+An event handler can also be named instead of written as a lambda, for example
+`slot clicked >> handleClick`. A statement-ending semicolon is optional at a
+newline or end of file; explicit semicolons are still supported.
+
 ## 📂 Project Structure
 
 ```

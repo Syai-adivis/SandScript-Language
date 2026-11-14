@@ -517,7 +517,15 @@ struct Parser
 {
     Lexer lex;
     Token tok;
-    void next_tok() { tok = lex.next(); }
+    size_t last_token_line = 0;
+    bool has_token = false;
+    void next_tok()
+    {
+        if (has_token)
+            last_token_line = tok.line;
+        tok = lex.next();
+        has_token = true;
+    }
     bool expect(TokenType t)
     {
         if (tok.type == t)
@@ -525,6 +533,8 @@ struct Parser
             next_tok();
             return true;
         }
+        if (t == SEMI && (tok.type == T_EOF || tok.line > last_token_line))
+            return true;
         Console::setColor(Console::Color::Red);
         std::cerr << "[" << tok.line << "] Syntax error: unexpected token '" << tok.val << "'\n";
         Console::setColor(Console::Color::Reset);
