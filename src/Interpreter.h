@@ -68,6 +68,13 @@ struct Interpreter
     QtWidgetRuntime qtWidgetRuntime;
     std::vector<QWidget *> widgetStack;
     std::unordered_map<std::string, QPointer<QWidget>> widgetIdentifiers;
+    QWidget *resolveWidgetIdentifier(const std::string &name) const
+    {
+        if (name == "self")
+            return widgetStack.empty() ? nullptr : widgetStack.back();
+        auto widget = widgetIdentifiers.find(name);
+        return widget == widgetIdentifiers.end() ? nullptr : widget->second.data();
+    }
 #endif
     Interpreter(){
         colorMode = Console::Color::Reset;
@@ -501,6 +508,18 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
         }
         case ASTNode::MEMBER_ASSIGN:
         {
+#ifdef SAND_ENABLE_QT_WIDGETS
+            if (!node->children.empty() && node->children[0]->kind == ASTNode::VAR)
+            {
+                if (QWidget *widget = resolveWidgetIdentifier(node->children[0]->val))
+                {
+                    EvalFrame rhs_frame = EvalFrame::make_expr_frame();
+                    auto rhs_val = eval(node->children[1].get(), scope, rhs_frame);
+                    qtWidgetRuntime.setProperty(widget, node->val, rhs_val);
+                    return RuntimeVal();
+                }
+            }
+#endif
             EvalFrame base_frame = EvalFrame::make_expr_frame();
             auto base_val = eval(node->children[0].get(), scope, base_frame);
 
@@ -681,6 +700,49 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
         }
         case ASTNode::SLOT_CONNECT_EXPR:
         {
+#ifdef SAND_ENABLE_QT_WIDGETS
+            if (node->val.compare(0, 3, "qt:") == 0)
+            {
+                if (widgetStack.empty())
+                    throw std::runtime_error("Qt slot connections must be declared inside a widget");
+                EvalFrame slot_frame = EvalFrame::make_expr_frame();
+                RuntimeVal slot_value = eval(node->children[1].get(), scope, slot_frame);
+                const auto *function = slot_value.as_func();
+                if (!function)
+                    throw std::runtime_error("Qt slot target must be a lambda");
+
+                const FuncT slot = function->value;
+                QWidget *sender = widgetStack.back();
+                QPointer<QWidget> senderGuard(sender);
+                Scope *capturedScope = scope;
+                const std::weak_ptr<void> scopeLifetime = scope->lifetime;
+                qtWidgetRuntime.connectSignal(
+                    sender,
+                    node->val.substr(3),
+                    [this, slot, senderGuard, capturedScope, scopeLifetime]()
+                    {
+                        if (!senderGuard || scopeLifetime.expired())
+                            return;
+                        Scope callbackScope(capturedScope);
+                        widgetStack.push_back(senderGuard);
+                        try
+                        {
+                            EvalFrame callbackFrame;
+                            eval(slot.second, &callbackScope, callbackFrame);
+                        }
+                        catch (const std::exception &error)
+                        {
+                            std::cerr << "Qt slot callback failed: " << error.what() << '\n';
+                        }
+                        catch (...)
+                        {
+                            std::cerr << "Qt slot callback failed with an unknown exception\n";
+                        }
+                        widgetStack.pop_back();
+                    });
+                return RuntimeVal();
+            }
+#endif
             EvalFrame lhs_frame = EvalFrame::make_expr_frame();
             auto lhsVal = eval(node->children[0].get(), scope, lhs_frame);
             auto *lhsObj = lhsVal.as_object();
@@ -1226,12 +1288,14 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
 #ifdef SAND_ENABLE_QT_WIDGETS
             if (!node->children.empty() && node->children[0]->kind == ASTNode::VAR)
             {
-                auto widget = widgetIdentifiers.find(node->children[0]->val);
-                if (widget != widgetIdentifiers.end())
+                if (QWidget *widget = resolveWidgetIdentifier(node->children[0]->val))
                 {
-                    if (widget->second.isNull())
-                        throw std::runtime_error("widget identifier '" + node->children[0]->val + "' refers to a destroyed widget");
-                    return qtWidgetRuntime.propertyValue(widget->second, node->val);
+                    return qtWidgetRuntime.propertyValue(widget, node->val);
+                }
+                if (node->children[0]->val == "self" ||
+                    widgetIdentifiers.find(node->children[0]->val) != widgetIdentifiers.end())
+                {
+                    throw std::runtime_error("widget identifier '" + node->children[0]->val + "' refers to no live widget");
                 }
             }
 #endif

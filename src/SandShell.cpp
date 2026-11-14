@@ -24,9 +24,9 @@ static void repl_main(const std::string &exePathRaw)
     Console::setColor(Console::Color::Green);
     std::cout << "Shell ";
     Console::setColor(Console::Color::Magenta);
-    std::cout << "2.8.0";
+    std::cout << "2.9.0";
     Console::setColor(Console::Color::BrightGreen);
-    std::cout << " (enter exit/quit to exit | enter copyright to get license information | enter help to get help information)" << std::endl;
+    std::cout << "Release (enter exit/quit to exit | enter copyright to get license information | enter help to get help information)" << std::endl;
     Console::setColor(Console::Color::Reset);
     Interpreter interp;
     fs::path exePath = fs::absolute(exePathRaw);

@@ -9,7 +9,7 @@ int main(int argc, char *argv[])
     if (argc != 2)
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "SandScript interpreter 2.8.0\n";
+        std::cout << "SandScript interpreter 2.9.0\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         Console::setColor(Console::Color::Reset);
@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
     if (std::string(argv[1]) == "--version")
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "2.8.0\n";
+        std::cout << "2.9.0\n";
         Console::setColor(Console::Color::Reset);
         return 0;
     }
@@ -276,7 +276,7 @@ limitations under the License.
     if (std::string(argv[1]) == "--help")
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "SandScript interpreter 2.8.0\n";
+        std::cout << "SandScript interpreter 2.9.0\n";
         std::cout << "Usage: Sandi script.sand\n";
         std::cout << "Example: Sandi test.sand\n";
         std::string help = R"XXX(
@@ -343,6 +343,7 @@ expr_stmt      ::= expr | connect | disconnect ";" ;
 
 connect        ::= "(" IDENT ">>" IDENT ")" ;
 disconnect     ::= "(" IDENT "!>" ( "all" | IDENT ) ")" ;
+property_connect        ::= "slot" IDENT ">>" IDENT  ;
 
 block          ::= "begin" { stmt } "end" ;
 
@@ -385,7 +386,7 @@ letter         ::= "a"..."z" | "A"..."Z" ;
 digit          ::= "0"..."9" ;
 non_ascii      ::= #x80 ... #xFFFF ;
 
-(* Keywords: if,else,while,for,in,func,return,break,continue,output,input,range,from,import,class,static,new,super,begin,end,and,or,not *)
+(* Keywords: if,else,while,for,in,func,return,break,continue,output,input,range,from,import,class,static,new,super,begin,end,and,or,not,widget,property,slot *)
 (* Operators: ++,--,+=,-=,*=,/=,+,-,*,/,==,!=,<,>,<=,>=,&&,||,!,=,.,... *)
 (* Punctuation: ( ) [ ] { } , : ; *)
         )XXX";

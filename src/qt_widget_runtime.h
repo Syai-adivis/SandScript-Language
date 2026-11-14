@@ -247,6 +247,64 @@ public:
         eventWatcher->watch(source, property, std::move(update));
     }
 
+    void connectSignal(QWidget *widget, const std::string &signal, std::function<void()> callback)
+    {
+        if (!widget)
+            throw std::runtime_error("cannot connect a signal on a null widget");
+
+        if (auto *button = qobject_cast<QAbstractButton *>(widget))
+        {
+            if (signal == "clicked")
+                QObject::connect(button, &QAbstractButton::clicked, eventWatcher.get(), [callback](bool) { callback(); });
+            else if (signal == "pressed")
+                QObject::connect(button, &QAbstractButton::pressed, eventWatcher.get(), callback);
+            else if (signal == "released")
+                QObject::connect(button, &QAbstractButton::released, eventWatcher.get(), callback);
+            else if (signal == "toggled")
+                QObject::connect(button, &QAbstractButton::toggled, eventWatcher.get(), [callback](bool) { callback(); });
+            else
+                throw std::runtime_error("unsupported button signal '" + signal + "'");
+            return;
+        }
+
+        if (auto *slider = qobject_cast<QAbstractSlider *>(widget))
+        {
+            if (signal != "valueChanged")
+                throw std::runtime_error("unsupported slider signal '" + signal + "'");
+            QObject::connect(slider, &QAbstractSlider::valueChanged, eventWatcher.get(), [callback](int) { callback(); });
+            return;
+        }
+
+        if (auto *spinBox = qobject_cast<QSpinBox *>(widget))
+        {
+            if (signal != "valueChanged")
+                throw std::runtime_error("unsupported spin box signal '" + signal + "'");
+            QObject::connect(spinBox, qOverload<int>(&QSpinBox::valueChanged), eventWatcher.get(), [callback](int) { callback(); });
+            return;
+        }
+
+        if (auto *lineEdit = qobject_cast<QLineEdit *>(widget))
+        {
+            if (signal != "textChanged")
+                throw std::runtime_error("unsupported text box signal '" + signal + "'");
+            QObject::connect(lineEdit, &QLineEdit::textChanged, eventWatcher.get(), [callback](const QString &) { callback(); });
+            return;
+        }
+
+        if (auto *comboBox = qobject_cast<QComboBox *>(widget))
+        {
+            if (signal != "currentIndexChanged" && signal != "activated")
+                throw std::runtime_error("unsupported combo box signal '" + signal + "'");
+            if (signal == "activated")
+                QObject::connect(comboBox, qOverload<int>(&QComboBox::activated), eventWatcher.get(), [callback](int) { callback(); });
+            else
+                QObject::connect(comboBox, qOverload<int>(&QComboBox::currentIndexChanged), eventWatcher.get(), [callback](int) { callback(); });
+            return;
+        }
+
+        throw std::runtime_error("signal '" + signal + "' is not supported by this widget");
+    }
+
     void setProperty(QWidget *widget, const std::string &name, const RuntimeVal &value)
     {
         if (!widget)

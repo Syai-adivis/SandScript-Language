@@ -60,6 +60,17 @@ end
 For example, `widget Slider begin property minimum = 0; property maximum = 100;
 property value = 25; end` creates a slider with its initial range and value.
 
+Button-like controls can connect Qt signals to Sand lambdas with `slot`. Inside
+the lambda, `self` refers to the control whose signal fired:
+
+```
+widget Button begin
+    slot clicked >> lambda () begin
+        self.enabled = false;
+    end
+end
+```
+
 ## 📂 Project Structure
 
 ```

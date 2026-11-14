@@ -118,7 +118,8 @@ enum TokenType
     DISCONNECT,
     T_EMIT,
     DOT,
-    T_WIDGET
+    T_WIDGET,
+    T_SLOT
 };
 struct Token
 {
@@ -270,6 +271,8 @@ struct Lexer
             t = T_WIDGET;
         else if (word == "property")
             t = T_PROPERTY;
+        else if (word == "slot")
+            t = T_SLOT;
         else if (word == "true")
             return Token{NUM, "1", start, ln};
         else if (word == "false")
@@ -592,6 +595,30 @@ std::unique_ptr<ASTNode> Parser::parse_stmt()
         property_name->line = tok.line;
         next_tok();
         return parse_widget_prop(std::move(property_name), ln);
+    }
+    case T_SLOT:
+    {
+        next_tok();
+        if (tok.type != IDENT)
+        {
+            expect(IDENT);
+            return std::make_unique<ASTNode>(ASTNode::SLOT_CONNECT_EXPR);
+        }
+        const std::string signal_name = tok.val;
+        next_tok();
+        if (!expect(CONNECT))
+            return std::make_unique<ASTNode>(ASTNode::SLOT_CONNECT_EXPR);
+        auto node = std::make_unique<ASTNode>(ASTNode::SLOT_CONNECT_EXPR);
+        node->val = "qt:" + signal_name;
+        node->line = ln;
+        auto self = std::make_unique<ASTNode>(ASTNode::VAR);
+        self->val = "self";
+        self->line = ln;
+        node->children.push_back(std::move(self));
+        node->children.push_back(parse_expr());
+        if (tok.type == SEMI)
+            next_tok();
+        return node;
     }
     case T_WIDGET:
     {

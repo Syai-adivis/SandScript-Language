@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SandScript VERSION 2.6.0 LANGUAGES CXX)
+project(SandScript VERSION 2.9.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -7,9 +7,9 @@ option(SAND_ENABLE_QT_WIDGETS "Enable Qt6 Widgets support for Sand widget declar
 
 set(HEADERS RuntimeValue.h analyzer.h includes.h Interpreter.h prepross.h SetColor.h qt_widget_runtime.h)
 set(COMMON_SRCS prepross.cpp)
-set(TARGETS Sandi SandShell)
-add_executable(Sandi Sandi.cpp prepross.cpp)
-add_executable(SandShell SandShell.cpp prepross.cpp)
+set(TARGETS QSandi QSandShell)
+add_executable(QSandi Sandi.cpp prepross.cpp)
+add_executable(QSandShell SandShell.cpp prepross.cpp)
 
 if(SAND_ENABLE_QT_WIDGETS)
     find_package(Qt6 REQUIRED COMPONENTS Widgets)
@@ -21,9 +21,9 @@ if(SAND_ENABLE_QT_WIDGETS)
 endif()
 
 if(MSVC)
-    target_compile_options(Sandi PRIVATE /W4 /O2)
-    target_compile_options(SandShell PRIVATE /W4 /O2)
+    target_compile_options(QSandi PRIVATE /W4 /O2)
+    target_compile_options(QSandShell PRIVATE /W4 /O2)
 else()
-    target_compile_options(Sandi PRIVATE -Wall -Wextra -O2)
-    target_compile_options(SandShell PRIVATE -Wall -Wextra -O2)
+    target_compile_options(QSandi PRIVATE -Wall -Wextra -O2)
+    target_compile_options(QSandShell PRIVATE -Wall -Wextra -O2)
 endif()
