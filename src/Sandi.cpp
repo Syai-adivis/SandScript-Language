@@ -9,7 +9,7 @@ int main(int argc, char *argv[])
     if (argc != 2)
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "SandScript interpreter 2.9.0\n";
+        std::cout << "SandScript interpreter 2.10.0\n";
         std::cout << "Usage: QSandi script.sand\n";
         std::cout << "Example: QSandi test.sand\n";
         Console::setColor(Console::Color::Reset);
@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
     if (std::string(argv[1]) == "--version")
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "2.9.0\n";
+        std::cout << "2.10.0\n";
         Console::setColor(Console::Color::Reset);
         return 0;
     }
@@ -276,7 +276,7 @@ limitations under the License.
     if (std::string(argv[1]) == "--help")
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "SandScript interpreter 2.9.0\n";
+        std::cout << "SandScript interpreter 2.10.0\n";
         std::cout << "Usage: QSandi script.sand\n";
         std::cout << "Example: QSandi test.sand\n";
         std::string help = R"XXX(
