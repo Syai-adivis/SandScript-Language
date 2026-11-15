@@ -14,6 +14,9 @@
 #include <limits>
 #include <chrono>
 #include <thread>
+#include <mutex>
+#include <atomic>
+#include <exception>
 #include <ctime>
 #include <filesystem>
 #include <unordered_set>

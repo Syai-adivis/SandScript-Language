@@ -64,6 +64,9 @@ struct Interpreter
 {
     Scope global;
     Console::Color colorMode;
+    std::mutex workerTasksMutex;
+    std::vector<std::shared_ptr<WorkerTaskState>> workerTasks;
+    std::vector<std::unique_ptr<ASTNode>> retainedAstRoots;
 #ifdef SAND_ENABLE_QT_WIDGETS
     QtWidgetRuntime qtWidgetRuntime;
     std::vector<QWidget *> widgetStack;
@@ -79,6 +82,27 @@ struct Interpreter
     Interpreter(){
         colorMode = Console::Color::Reset;
     }
+    ~Interpreter()
+    {
+        joinWorkers();
+    }
+    void joinWorkers()
+    {
+        size_t joined = 0;
+        for (;;)
+        {
+            std::shared_ptr<WorkerTaskState> task;
+            {
+                std::lock_guard<std::mutex> lock(workerTasksMutex);
+                if (joined >= workerTasks.size())
+                    break;
+                task = workerTasks[joined++];
+            }
+            std::lock_guard<std::mutex> joinLock(task->join_mutex);
+            if (task->thread.joinable())
+                task->thread.join();
+        }
+    }
 #ifdef SAND_ENABLE_QT_WIDGETS
     int runWidgets() { return qtWidgetRuntime.runEventLoop(); }
 #endif
@@ -87,9 +111,11 @@ struct Interpreter
     FuncT *lookup_static_method(ClassMeta *meta, const std::string &name);
     std::shared_ptr<ClassMeta> resolve_superclass(const std::string &super_name, Scope *scope, size_t line);
     std::vector<std::string> cmd_args;
+    std::vector<std::unique_ptr<ASTNode>> importedModules;
     RuntimeVal *get_lvalue(RuntimeVal &root, ASTNode *idx_node, Scope *scope, EvalFrame &expr_frame, size_t line);
 
-    void import_file(const std::string &path);
+    void import_file(const std::string &path, const std::vector<std::string> &names,
+                     bool selective, Scope *target);
 
     RuntimeVal eval(ASTNode *node, Scope *scope, EvalFrame &frame);
 #ifdef SAND_ENABLE_QT_WIDGETS
@@ -247,11 +273,14 @@ std::shared_ptr<ClassMeta> Interpreter::resolve_superclass(const std::string &su
     return super_meta_ptr->value;
 }
 
-void Interpreter::import_file(const std::string &path)
+void Interpreter::import_file(const std::string &path, const std::vector<std::string> &names,
+                              bool selective, Scope *target)
 {
     std::ifstream fin(path);
     if (!fin.is_open())
     {
+        if (selective)
+            throw std::runtime_error("cannot open file " + path);
         Console::setColor(Console::Color::Red);
         std::cerr << "Import error: cannot open file " << path << "\n";
         Console::setColor(Console::Color::Reset);
@@ -262,7 +291,24 @@ void Interpreter::import_file(const std::string &path)
     fin.close();
     auto ast = parse_source(buf.str());
     EvalFrame subframe;
-    eval(ast.get(), &global, subframe);
+    if (!selective)
+    {
+        eval(ast.get(), &global, subframe);
+        importedModules.push_back(std::move(ast));
+        return;
+    }
+
+    Scope moduleScope(&global);
+    moduleScope.isolateWrites = true;
+    eval(ast.get(), &moduleScope, subframe);
+    for (const auto &name : names)
+    {
+        auto it = moduleScope.vars.find(name);
+        if (it == moduleScope.vars.end())
+            throw std::runtime_error("module '" + path + "' has no top-level declaration named '" + name + "'");
+        target->set(name, it->second.clone());
+    }
+    importedModules.push_back(std::move(ast));
 }
 
 RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
@@ -354,6 +400,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 throw;
             }
             widgetStack.pop_back();
+            if (parent)
+                qtWidgetRuntime.addTabPage(parent, widget);
             if (!parent)
                 qtWidgetRuntime.show(widget);
             return RuntimeVal();
@@ -363,7 +411,11 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
 #endif
         case ASTNode::IMPORT:
         {
-            import_file(node->val);
+            std::vector<std::string> names;
+            names.reserve(node->children.size());
+            for (const auto &child : node->children)
+                names.push_back(child->val);
+            import_file(node->val, names, node->val2 == "selective", scope);
             return RuntimeVal();
         }
         case ASTNode::LIT_NUM:
@@ -425,7 +477,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     }
                     ASTNode *body = s->children.back().get();
                     FuncT ft = std::make_pair(std::move(paramsInfo), body);
-                    ns_obj->members[fname] = RuntimeVal(std::move(ft));
+                    ns_obj->members[fname] = RuntimeVal(std::move(ft), s->val2 == "worker");
                     continue;
                 }
                 if (s->kind == ASTNode::CLASS_DEF)
@@ -1027,38 +1079,52 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
             EvalFrame seq_frame = EvalFrame::make_expr_frame();
             auto seq_val = eval(node->children[0].get(), scope, seq_frame);
             auto *arrptr = seq_val.as_array();
-            if (!arrptr)
+            auto *range = seq_val.as_range();
+            if (!arrptr && !range)
             {
                 Console::setColor(Console::Color::Red);
-                std::cerr << "[" << ln << "] Runtime error: foreach expects array\n";
+                std::cerr << "[" << ln << "] Runtime error: foreach expects array or range\n";
                 Console::setColor(Console::Color::Reset);
                 return RuntimeVal();
             }
-            Array &arr = arrptr->value;
-            for (size_t idx = 0; idx < arr.size(); idx++)
+            auto run_item = [&](RuntimeVal &item, RuntimeVal *writeback)
             {
                 Scope blk_scope(scope);
-                blk_scope.set(node->val, arr[idx].clone());
+                blk_scope.set(node->val, item.clone());
                 eval(node->children[1].get(), &blk_scope, frame);
                 auto *modified = blk_scope.get(node->val);
-                if (modified != nullptr)
-                {
-                    arr[idx] = std::move(*modified);
-                }
+                if (writeback && modified != nullptr)
+                    *writeback = std::move(*modified);
                 if (frame.break_flag)
                 {
                     frame.break_flag = false;
-                    break;
+                    return true;
                 }
                 if (frame.continue_flag)
                 {
                     frame.continue_flag = false;
-                    continue;
+                    return false;
                 }
-                if (frame.has_return)
+                return frame.has_return;
+            };
+            if (arrptr)
+            {
+                Array &arr = arrptr->value;
+                for (size_t idx = 0; idx < arr.size(); ++idx)
                 {
-                    return RuntimeVal();
-                    break;
+                    if (run_item(arr[idx], &arr[idx]))
+                        break;
+                }
+            }
+            else
+            {
+                BigDecimal current = range->start;
+                while (range->contains(current))
+                {
+                    RuntimeVal item(current);
+                    if (run_item(item, nullptr))
+                        break;
+                    current = current + range->step;
                 }
             }
             return RuntimeVal();
@@ -1135,46 +1201,21 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
         }
         case ASTNode::RANGE:
         {
-            EvalFrame s_frame = EvalFrame::make_expr_frame();
-            auto s = eval(node->children[0].get(), scope, s_frame);
-
-            EvalFrame e_frame = EvalFrame::make_expr_frame();
-            auto e = eval(node->children[1].get(), scope, e_frame);
-
-            auto *s_num = s.as_num();
-            auto *e_num = e.as_num();
-            if (!s_num || !e_num)
+            std::vector<BigDecimal> values;
+            values.reserve(node->children.size());
+            for (const auto &child : node->children)
             {
-                Console::setColor(Console::Color::Red);
-                std::cerr << "[" << ln << "] Runtime error: range() arguments must be number\n";
-                Console::setColor(Console::Color::Reset);
-                return RuntimeVal(Array{});
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                RuntimeVal arg = eval(child.get(), scope, arg_frame);
+                const auto *number = arg.as_num();
+                if (!number)
+                    throw std::runtime_error("range endpoints and step must be numbers");
+                values.push_back(number->value);
             }
-            BigDecimal start = s_num->value;
-            BigDecimal end = e_num->value;
             BigDecimal step("1");
-            if (node->children.size() >= 3)
-            {
-                EvalFrame st_frame = EvalFrame::make_expr_frame();
-                auto st = eval(node->children[2].get(), scope, st_frame);
-                auto *st_num = st.as_num();
-                if (!st_num)
-                {
-                    Console::setColor(Console::Color::Red);
-                    std::cerr << "[" << ln << "] Runtime error: range() step must be number\n";
-                    Console::setColor(Console::Color::Reset);
-                    return RuntimeVal(Array{});
-                }
-                step = st_num->value;
-            }
-            Array arr;
-            BigDecimal cur = start;
-            while (cur < end)
-            {
-                arr.push_back(RuntimeVal(cur));
-                cur = cur + step;
-            }
-            return RuntimeVal(std::move(arr));
+            if (values.size() >= 3)
+                step = values[2];
+            return RuntimeVal(values[0], values[1], std::move(step));
         }
         case ASTNode::ARRAY_LIT:
         {
@@ -1264,6 +1305,14 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     return RuntimeVal();
                 }
                 return arrptr->value[idx].clone();
+            }
+            if (auto *range = base.as_range())
+            {
+                auto *idxnum = idxv.as_num();
+                if (!idxnum || idxnum->value.negative || !idxnum->value.fractional.empty() ||
+                    idxnum->value >= range->size())
+                    throw std::runtime_error("range index out of bounds");
+                return RuntimeVal(range->start + range->step * idxnum->value);
             }
             auto *dictptr = base.as_dict();
             if (dictptr)
@@ -1679,7 +1728,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 paramsInfo.push_back(std::move(pi));
             }
             ASTNode *body = node->children.back().get();
-            scope->set(node->val, RuntimeVal(std::make_pair(std::move(paramsInfo), body)));
+            scope->set(node->val, RuntimeVal(std::make_pair(std::move(paramsInfo), body), node->val2 == "worker"));
             return RuntimeVal();
         }
         case ASTNode::CALL:
@@ -1896,6 +1945,49 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 std::this_thread::sleep_for(std::chrono::milliseconds(ms));
                 return RuntimeVal();
             }
+            if (node->val == "worker_done" || node->val == "wait")
+            {
+                if (node->children.size() != 1)
+                {
+                    Console::setColor(Console::Color::Red);
+                    std::cerr << "[" << ln << "] Runtime error: " << node->val << "() expects one worker task\n";
+                    Console::setColor(Console::Color::Reset);
+                    return RuntimeVal();
+                }
+                EvalFrame arg_frame = EvalFrame::make_expr_frame();
+                RuntimeVal task_value = eval(node->children[0].get(), scope, arg_frame);
+                auto *task_ptr = task_value.as_task();
+                if (!task_ptr)
+                {
+                    Console::setColor(Console::Color::Red);
+                    std::cerr << "[" << ln << "] Runtime error: " << node->val << "() argument must be a worker task\n";
+                    Console::setColor(Console::Color::Reset);
+                    return RuntimeVal();
+                }
+                const auto task = task_ptr->value;
+                if (node->val == "worker_done")
+                    return RuntimeVal(BigDecimal(task->done.load(std::memory_order_acquire) ? "1" : "0"));
+
+                {
+                    std::lock_guard<std::mutex> joinLock(task->join_mutex);
+                    if (task->thread.joinable())
+                    {
+                        if (task->thread.get_id() == std::this_thread::get_id())
+                            throw std::runtime_error("worker cannot wait on itself");
+                        task->thread.join();
+                    }
+                }
+                std::exception_ptr failure;
+                RuntimeVal result;
+                {
+                    std::lock_guard<std::mutex> lock(task->mutex);
+                    failure = task->failure;
+                    result = task->result.clone();
+                }
+                if (failure)
+                    std::rethrow_exception(failure);
+                return result;
+            }
             if (node->val == "args")
             {
                 if (!node->children.empty())
@@ -1964,6 +2056,10 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 {
                     return RuntimeVal(BigDecimal(std::to_string(ap->value.size())));
                 }
+                else if (auto *range = arg.as_range())
+                {
+                    return RuntimeVal(range->size());
+                }
                 else if (auto *sp = arg.as_str())
                 {
                     return RuntimeVal(BigDecimal(std::to_string(sp->value.size())));
@@ -1971,7 +2067,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 else
                 {
                     Console::setColor(Console::Color::Red);
-                    std::cerr << "[" << ln << "] Runtime error: len() expects array or string\n";
+                    std::cerr << "[" << ln << "] Runtime error: len() expects array, range, or string\n";
                     Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
@@ -2122,6 +2218,7 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 return RuntimeVal();
             }
             Scope fscope(scope);
+            fscope.isolateWrites = fptr->is_worker;
             FuncT &ft = fptr->value;
             std::vector<FuncParamInfo> &params = ft.first;
             ASTNode *func_body = ft.second;
@@ -2176,6 +2273,43 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     Console::setColor(Console::Color::Reset);
                     return RuntimeVal();
                 }
+            }
+
+            if (fptr->is_worker)
+            {
+                auto task = std::make_shared<WorkerTaskState>();
+                auto workerScope = std::make_shared<Scope>();
+                std::vector<Scope *> scopeChain;
+                for (Scope *current = &fscope; current; current = current->parent)
+                    scopeChain.push_back(current);
+                for (auto it = scopeChain.rbegin(); it != scopeChain.rend(); ++it)
+                {
+                    for (const auto &entry : (*it)->vars)
+                        workerScope->vars.insert_or_assign(entry.first, entry.second.clone());
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(workerTasksMutex);
+                    workerTasks.push_back(task);
+                }
+                task->thread = std::thread([this, task, workerScope, func_body]()
+                {
+                    try
+                    {
+                        EvalFrame workerFrame;
+                        eval(func_body, workerScope.get(), workerFrame);
+                        std::lock_guard<std::mutex> lock(task->mutex);
+                        if (workerFrame.has_return)
+                            task->result = std::move(workerFrame.ret_val);
+                    }
+                    catch (...)
+                    {
+                        std::lock_guard<std::mutex> lock(task->mutex);
+                        task->failure = std::current_exception();
+                    }
+                    task->done.store(true, std::memory_order_release);
+                });
+                return RuntimeVal(std::move(task));
             }
 
             EvalFrame child_frame = frame.make_child();

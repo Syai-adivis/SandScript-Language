@@ -9,7 +9,7 @@ int main(int argc, char *argv[])
     if (argc != 2)
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "SandScript interpreter 2.10.0\n";
+        std::cout << "SandScript interpreter 3.0.0\n";
         std::cout << "Usage: QSandi script.sand\n";
         std::cout << "Example: QSandi test.sand\n";
         Console::setColor(Console::Color::Reset);
@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
     if (std::string(argv[1]) == "--version")
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "2.10.0\n";
+        std::cout << "3.0.0\n";
         Console::setColor(Console::Color::Reset);
         return 0;
     }
@@ -276,7 +276,7 @@ limitations under the License.
     if (std::string(argv[1]) == "--help")
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "SandScript interpreter 2.10.0\n";
+        std::cout << "SandScript interpreter 3.0.0\n";
         std::cout << "Usage: QSandi script.sand\n";
         std::cout << "Example: QSandi test.sand\n";
         std::string help = R"XXX(
@@ -286,6 +286,7 @@ stmt           ::= if_stmt
                  | while_stmt
                  | for_in_stmt
                  | func_def_stmt
+                 | worker_func_def_stmt
                  | class_def_stmt
                  | namespace_stmt
                  | import_stmt
@@ -302,9 +303,11 @@ stmt           ::= if_stmt
                  | widget_stmt
                  | expr_stmt ;
 
-namespace_stmt ::= "namespace" IDENT "begin" { stmt } "end" ;
+namespace_stmt ::= "namespace" IDENT block ;
 if_stmt        ::= "if" "(" expr ")" block [ "else" if_stmt|block ] ;
-switch_stmt    ::= "switch" "(" expr ")" "begin" { switch_branch } "end" ;
+switch_stmt    ::= "switch" "(" expr ")" switch_block ;
+switch_block   ::= "begin" { switch_branch } "end"
+                 | "{" { switch_branch } "}" ;
 switch_branch  ::= case_branch
                  | default_branch ;
 case_branch    ::= "case" case_pattern [ guard_clause ] ":" stmt ;
@@ -318,18 +321,23 @@ while_stmt     ::= "while" "(" expr ")" block ;
 for_in_stmt    ::= "for" IDENT "in" expr block ;
 
 func_def_stmt  ::= "func" IDENT "(" param_list ")" block ;
+worker_func_def_stmt ::= "worker" "func" IDENT "(" param_list ")" block ;
 param_list     ::= [ param ( "," param )* ] ;
 param          ::= IDENT | "..." IDENT ;
 
-widget_stmt    ::= "widget" IDENT wblock ;
-wblock         ::= "begin" { widget_prop | property_connect } "end" ;
-widget_prop    ::= "property" assign_stmt ;
+widget_stmt    ::= "widget" IDENT widget_block ;
+widget_block   ::= "begin" { widget_member } "end"
+                 | "{" { widget_member } "}" ;
+widget_member  ::= widget_prop | property_connect | widget_stmt ;
 property_connect ::= "slot" IDENT ">>" expr [";"] ;
+widget_prop    ::= "property" assign_stmt ;
 
-class_def_stmt ::= "class" IDENT [ ":" IDENT ] "begin" { class_member } "end" ;
+class_def_stmt ::= "class" IDENT [ ":" IDENT ] block ;
 class_member   ::= [ "static" ] "func" IDENT "(" param_list ")" block ;
 
-import_stmt    ::= "from" STR "import" ";" ;
+import_stmt    ::= "from" STR "import" [ ";" | import_names [ ";" ] ] ;
+import_names   ::= "{" [ IDENT ( "," IDENT )* ] "}"
+                 | "begin" [ IDENT ( "," IDENT )* ] "end" ;
 return_stmt    ::= "return" expr ";" ;
 break_stmt     ::= "break" ";" ;
 continue_stmt  ::= "continue" ";" ;
@@ -344,12 +352,14 @@ expr_stmt      ::= expr | connect | disconnect ";" ;
 
 connect        ::= "(" IDENT ">>" IDENT ")" ;
 disconnect     ::= "(" IDENT "!>" ( "all" | IDENT ) ")" ;
-block          ::= "begin" { stmt } "end" ;
+block          ::= ( "begin" { stmt } "end" )
+                 | ( "{" { stmt } "}" ) ;
 
 (* Expression, precedence: low -> high *)
 expr           ::= logic_or ;
 logic_or       ::= logic_and { "||"|"or" logic_and } ;
-logic_and      ::= compare { "&&"|"and" compare } ;
+logic_and      ::= range_expr { "&&"|"and" range_expr } ;
+range_expr     ::= compare [ "..." compare ] ;
 compare        ::= add { ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) add } ;
 add            ::= mul { ( "+" | "-" ) mul } ;
 mul            ::= unary { ( "*" | "/" ) unary } ;
@@ -385,7 +395,7 @@ letter         ::= "a"..."z" | "A"..."Z" ;
 digit          ::= "0"..."9" ;
 non_ascii      ::= #x80 ... #xFFFF ;
 
-(* Keywords: if,else,while,for,in,func,return,break,continue,output,input,range,from,import,class,static,new,super,begin,end,and,or,not,widget,property,slot *)
+(* Keywords: if,else,while,for,in,func,worker,return,break,continue,output,input,range,from,import,class,static,new,super,begin,end,and,or,not,widget,property,slot *)
 (* Operators: ++,--,+=,-=,*=,/=,+,-,*,/,==,!=,<,>,<=,>=,&&,||,!,=,.,... *)
 (* Punctuation: ( ) [ ] { } , : ; *)
 (* A statement-ending semicolon may be omitted before a newline or end of file. *)

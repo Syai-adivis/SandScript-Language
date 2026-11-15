@@ -1,0 +1,12 @@
+value = 4;
+
+worker func calculate(extra = 3) begin
+    sleep(200)
+    return value + extra
+end
+
+task = calculate()
+value = 100
+output(worker_done(task))
+output(wait(task))
+output(worker_done(task))

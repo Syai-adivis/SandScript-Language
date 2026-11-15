@@ -24,7 +24,7 @@ static void repl_main(const std::string &exePathRaw)
     Console::setColor(Console::Color::Green);
     std::cout << "Shell ";
     Console::setColor(Console::Color::Magenta);
-    std::cout << "2.10.0";
+    std::cout << "3.0.0";
     Console::setColor(Console::Color::BrightGreen);
     std::cout << "Release (enter exit/quit to exit | enter copyright to get license information | enter help to get help information)" << std::endl;
     Console::setColor(Console::Color::Reset);
@@ -97,8 +97,9 @@ static void repl_main(const std::string &exePathRaw)
 
             std::string processed = preprocess_source(source, exePath);
             auto ast = parse_source(processed);
+            interp.retainedAstRoots.push_back(std::move(ast));
             EvalFrame frame;
-            RuntimeVal ret = interp.eval(ast.get(), &interp.global, frame);
+            RuntimeVal ret = interp.eval(interp.retainedAstRoots.back().get(), &interp.global, frame);
 #ifdef SAND_ENABLE_QT_WIDGETS
             interp.runWidgets();
 #endif

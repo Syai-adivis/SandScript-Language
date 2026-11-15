@@ -8,11 +8,14 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDate>
+#include <QDateEdit>
 #include <QDynamicPropertyChangeEvent>
 #include <QEvent>
 #include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QObject>
 #include <QProgressBar>
 #include <QPointer>
@@ -21,6 +24,9 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QTextEdit>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QTabWidget>
 #include <QVariant>
 #include <QWidget>
 
@@ -131,6 +137,14 @@ public:
             widget = new QSpinBox(parent);
         else if (type == "GroupBox")
             widget = new QGroupBox(parent);
+        else if (type == "ListView")
+            widget = new QListWidget(parent);
+        else if (type == "TableWidget")
+            widget = new QTableWidget(parent);
+        else if (type == "DateEdit")
+            widget = new QDateEdit(parent);
+        else if (type == "TabWidget")
+            widget = new QTabWidget(parent);
         else
             throw std::runtime_error("unknown Qt widget type '" + type + "'");
 
@@ -207,11 +221,68 @@ public:
         {
             if (auto *comboBox = qobject_cast<QComboBox *>(widget))
                 return RuntimeVal(BigDecimal(comboBox->currentIndex()));
+            if (auto *tabs = qobject_cast<QTabWidget *>(widget))
+                return RuntimeVal(BigDecimal(tabs->currentIndex()));
         }
         if (name == "currentText")
         {
             if (auto *comboBox = qobject_cast<QComboBox *>(widget))
                 return RuntimeVal(comboBox->currentText().toStdString());
+            if (auto *list = qobject_cast<QListWidget *>(widget))
+                return RuntimeVal(list->currentItem() ? list->currentItem()->text().toStdString() : std::string());
+        }
+        if (name == "currentRow")
+        {
+            if (auto *list = qobject_cast<QListWidget *>(widget))
+                return RuntimeVal(BigDecimal(list->currentRow()));
+            if (auto *table = qobject_cast<QTableWidget *>(widget))
+                return RuntimeVal(BigDecimal(table->currentRow()));
+        }
+        if (name == "currentColumn")
+        {
+            if (auto *table = qobject_cast<QTableWidget *>(widget))
+                return RuntimeVal(BigDecimal(table->currentColumn()));
+        }
+        if (name == "rowCount")
+        {
+            if (auto *table = qobject_cast<QTableWidget *>(widget))
+                return RuntimeVal(BigDecimal(table->rowCount()));
+        }
+        if (name == "columnCount")
+        {
+            if (auto *table = qobject_cast<QTableWidget *>(widget))
+                return RuntimeVal(BigDecimal(table->columnCount()));
+        }
+        if (name == "date")
+        {
+            if (auto *dateEdit = qobject_cast<QDateEdit *>(widget))
+                return RuntimeVal(dateEdit->date().toString(Qt::ISODate).toStdString());
+        }
+        if (name == "items")
+        {
+            Array items;
+            if (auto *comboBox = qobject_cast<QComboBox *>(widget))
+            {
+                for (int i = 0; i < comboBox->count(); ++i)
+                    items.emplace_back(comboBox->itemText(i).toStdString());
+                return RuntimeVal(std::move(items));
+            }
+            if (auto *list = qobject_cast<QListWidget *>(widget))
+            {
+                for (int i = 0; i < list->count(); ++i)
+                    items.emplace_back(list->item(i)->text().toStdString());
+                return RuntimeVal(std::move(items));
+            }
+            if (auto *table = qobject_cast<QTableWidget *>(widget))
+            {
+                for (int row = 0; row < table->rowCount(); ++row)
+                    for (int column = 0; column < table->columnCount(); ++column)
+                    {
+                        const auto *cell = table->item(row, column);
+                        items.emplace_back(cell ? cell->text().toStdString() : std::string());
+                    }
+                return RuntimeVal(std::move(items));
+            }
         }
         if (name == "placeholderText")
         {
@@ -302,7 +373,46 @@ public:
             return;
         }
 
+        if (auto *list = qobject_cast<QListWidget *>(widget))
+        {
+            if (signal != "currentRowChanged" && signal != "currentItemChanged")
+                throw std::runtime_error("unsupported list view signal '" + signal + "'");
+            QObject::connect(list, &QListWidget::currentRowChanged, eventWatcher.get(), [callback](int) { callback(); });
+            return;
+        }
+
+        if (auto *table = qobject_cast<QTableWidget *>(widget))
+        {
+            if (signal != "currentCellChanged")
+                throw std::runtime_error("unsupported table widget signal '" + signal + "'");
+            QObject::connect(table, &QTableWidget::currentCellChanged, eventWatcher.get(),
+                             [callback](int, int, int, int) { callback(); });
+            return;
+        }
+
+        if (auto *dateEdit = qobject_cast<QDateEdit *>(widget))
+        {
+            if (signal != "dateChanged")
+                throw std::runtime_error("unsupported date edit signal '" + signal + "'");
+            QObject::connect(dateEdit, &QDateEdit::dateChanged, eventWatcher.get(), [callback](const QDate &) { callback(); });
+            return;
+        }
+
+        if (auto *tabs = qobject_cast<QTabWidget *>(widget))
+        {
+            if (signal != "currentChanged")
+                throw std::runtime_error("unsupported tab widget signal '" + signal + "'");
+            QObject::connect(tabs, &QTabWidget::currentChanged, eventWatcher.get(), [callback](int) { callback(); });
+            return;
+        }
+
         throw std::runtime_error("signal '" + signal + "' is not supported by this widget");
+    }
+
+    void addTabPage(QWidget *parent, QWidget *page)
+    {
+        if (auto *tabs = qobject_cast<QTabWidget *>(parent))
+            tabs->addTab(page, page->windowTitle());
     }
 
     void setProperty(QWidget *widget, const std::string &name, const RuntimeVal &value)
@@ -408,21 +518,13 @@ public:
         else if (name == "currentIndex")
         {
             auto *comboBox = qobject_cast<QComboBox *>(widget);
-            if (!comboBox)
-                throw std::runtime_error("widget property 'currentIndex' requires ComboBox");
-            comboBox->setCurrentIndex(qt_widget_runtime_detail::toInt(value, name));
-        }
-        else if (name == "items")
-        {
-            auto *comboBox = qobject_cast<QComboBox *>(widget);
-            const auto *string = value.as_str();
-            if (!comboBox || !string)
-                throw std::runtime_error("widget property 'items' requires ComboBox and a string");
-            comboBox->clear();
-            std::istringstream items(string->value);
-            std::string item;
-            while (std::getline(items, item, ','))
-                comboBox->addItem(QString::fromStdString(item));
+            const int index = qt_widget_runtime_detail::toInt(value, name);
+            if (comboBox)
+                comboBox->setCurrentIndex(index);
+            else if (auto *tabs = qobject_cast<QTabWidget *>(widget))
+                tabs->setCurrentIndex(index);
+            else
+                throw std::runtime_error("widget property 'currentIndex' requires ComboBox or TabWidget");
         }
         else if (name == "placeholderText")
         {
@@ -459,6 +561,94 @@ public:
                 slider->setOrientation(Qt::Vertical);
             else
                 throw std::runtime_error("widget orientation must be 'horizontal' or 'vertical'");
+        }
+        else if (name == "items")
+        {
+            QStringList items;
+            if (const auto *array = value.as_array())
+            {
+                for (const auto &item : array->value)
+                {
+                    const auto *text = item.as_str();
+                    if (!text)
+                        throw std::runtime_error("widget property 'items' requires strings");
+                    items.push_back(QString::fromStdString(text->value));
+                }
+            }
+            else if (const auto *string = value.as_str())
+            {
+                std::istringstream input(string->value);
+                std::string item;
+                while (std::getline(input, item, ','))
+                    items.push_back(QString::fromStdString(item));
+            }
+            else
+                throw std::runtime_error("widget property 'items' requires a string or array of strings");
+
+            if (auto *comboBox = qobject_cast<QComboBox *>(widget))
+            {
+                comboBox->clear();
+                comboBox->addItems(items);
+            }
+            else if (auto *list = qobject_cast<QListWidget *>(widget))
+            {
+                list->clear();
+                list->addItems(items);
+            }
+            else if (auto *table = qobject_cast<QTableWidget *>(widget))
+            {
+                if (table->columnCount() == 0)
+                    table->setColumnCount(1);
+                table->clearContents();
+                table->setRowCount(static_cast<int>((items.size() + table->columnCount() - 1) / table->columnCount()));
+                for (qsizetype i = 0; i < items.size(); ++i)
+                    table->setItem(static_cast<int>(i / table->columnCount()),
+                                   static_cast<int>(i % table->columnCount()),
+                                   new QTableWidgetItem(items[i]));
+            }
+            else
+                throw std::runtime_error("widget property 'items' requires ListView or TableWidget");
+        }
+        else if (name == "currentRow")
+        {
+            const int row = qt_widget_runtime_detail::toInt(value, name);
+            if (auto *list = qobject_cast<QListWidget *>(widget))
+                list->setCurrentRow(row);
+            else if (auto *table = qobject_cast<QTableWidget *>(widget))
+                table->setCurrentCell(row, std::max(0, table->currentColumn()));
+            else
+                throw std::runtime_error("widget property 'currentRow' requires ListView or TableWidget");
+        }
+        else if (name == "currentColumn")
+        {
+            auto *table = qobject_cast<QTableWidget *>(widget);
+            if (!table)
+                throw std::runtime_error("widget property 'currentColumn' requires TableWidget");
+            table->setCurrentCell(std::max(0, table->currentRow()), qt_widget_runtime_detail::toInt(value, name));
+        }
+        else if (name == "rowCount" || name == "columnCount")
+        {
+            auto *table = qobject_cast<QTableWidget *>(widget);
+            if (!table)
+                throw std::runtime_error("widget property '" + name + "' requires TableWidget");
+            const int count = qt_widget_runtime_detail::toInt(value, name);
+            if (count < 0)
+                throw std::runtime_error("widget property '" + name + "' cannot be negative");
+            if (name == "rowCount")
+                table->setRowCount(count);
+            else
+                table->setColumnCount(count);
+        }
+        else if (name == "date")
+        {
+            auto *dateEdit = qobject_cast<QDateEdit *>(widget);
+            const auto *string = value.as_str();
+            if (!dateEdit || !string)
+                throw std::runtime_error("widget property 'date' requires DateEdit and a string");
+            const QDate date = QDate::fromString(QString::fromStdString(string->value), Qt::ISODate);
+            if (!date.isValid())
+                throw std::runtime_error("widget property 'date' must use YYYY-MM-DD format");
+            dateEdit->setDate(date);
         }
         else
             widget->setProperty(name.c_str(), qt_widget_runtime_detail::toVariant(value));
@@ -509,6 +699,14 @@ private:
                 QObject::connect(lineEdit, &QLineEdit::textChanged, this, [this, widget](const QString &) { notify(widget, {"text"}); });
             else if (auto *textEdit = qobject_cast<QTextEdit *>(widget))
                 QObject::connect(textEdit, &QTextEdit::textChanged, this, [this, widget]() { notify(widget, {"text"}); });
+            else if (auto *list = qobject_cast<QListWidget *>(widget))
+                QObject::connect(list, &QListWidget::currentRowChanged, this, [this, widget](int) { notify(widget, {"currentRow", "currentText"}); });
+            else if (auto *table = qobject_cast<QTableWidget *>(widget))
+                QObject::connect(table, &QTableWidget::currentCellChanged, this, [this, widget](int, int, int, int) { notify(widget, {"currentRow", "currentColumn"}); });
+            else if (auto *dateEdit = qobject_cast<QDateEdit *>(widget))
+                QObject::connect(dateEdit, &QDateEdit::dateChanged, this, [this, widget](const QDate &) { notify(widget, {"date"}); });
+            else if (auto *tabs = qobject_cast<QTabWidget *>(widget))
+                QObject::connect(tabs, &QTabWidget::currentChanged, this, [this, widget](int) { notify(widget, {"currentIndex"}); });
         }
 
     protected:

@@ -119,7 +119,8 @@ enum TokenType
     T_EMIT,
     DOT,
     T_WIDGET,
-    T_SLOT
+    T_SLOT,
+    T_WORKER
 };
 struct Token
 {
@@ -273,6 +274,8 @@ struct Lexer
             t = T_PROPERTY;
         else if (word == "slot")
             t = T_SLOT;
+        else if (word == "worker")
+            t = T_WORKER;
         else if (word == "true")
             return Token{NUM, "1", start, ln};
         else if (word == "false")
@@ -283,8 +286,15 @@ struct Lexer
     {
         size_t start = idx;
         size_t ln = cur_line;
-        while (isdigit(peek()) || peek() == '.')
+        while (std::isdigit(static_cast<unsigned char>(peek())))
             consume();
+        if (peek() == '.' && idx + 1 < src.size() &&
+            std::isdigit(static_cast<unsigned char>(src[idx + 1])))
+        {
+            consume();
+            while (std::isdigit(static_cast<unsigned char>(peek())))
+                consume();
+        }
         return Token{NUM, src.substr(start, idx - start), start, ln};
     }
     Token next()
@@ -489,6 +499,7 @@ struct Scope
     std::unordered_map<std::string, RuntimeVal> vars;
     Scope *parent = nullptr;
     std::shared_ptr<void> lifetime = std::make_shared<int>(0);
+    bool isolateWrites = false;
     Scope(Scope *p = nullptr) : parent(p) {}
     RuntimeVal *get(const std::string &name)
     {
@@ -501,6 +512,11 @@ struct Scope
     }
     void set(const std::string &name, RuntimeVal v)
     {
+        if (isolateWrites)
+        {
+            vars[name] = std::move(v);
+            return;
+        }
         auto p = get(name);
         if (p != nullptr)
         {
@@ -533,7 +549,9 @@ struct Parser
             next_tok();
             return true;
         }
-        if (t == SEMI && (tok.type == T_EOF || tok.line > last_token_line))
+        if (t == SEMI &&
+            (tok.type == T_EOF || tok.type == T_END || tok.type == RBRACE ||
+             tok.line > last_token_line))
             return true;
         Console::setColor(Console::Color::Red);
         std::cerr << "[" << tok.line << "] Syntax error: unexpected token '" << tok.val << "'\n";
@@ -545,11 +563,12 @@ struct Parser
     std::unique_ptr<ASTNode> parse_if();
     std::unique_ptr<ASTNode> parse_while();
     std::unique_ptr<ASTNode> parse_for_in();
-    std::unique_ptr<ASTNode> parse_func();
+    std::unique_ptr<ASTNode> parse_func(bool is_worker = false);
     std::unique_ptr<ASTNode> parse_block();
     std::unique_ptr<ASTNode> parse_expr();
     std::unique_ptr<ASTNode> parse_logic_or();
     std::unique_ptr<ASTNode> parse_logic_and();
+    std::unique_ptr<ASTNode> parse_range();
     std::unique_ptr<ASTNode> parse_compare();
     std::unique_ptr<ASTNode> parse_add();
     std::unique_ptr<ASTNode> parse_mul();
@@ -566,6 +585,10 @@ struct Parser
     std::unique_ptr<ASTNode> parse_slot_op(std::unique_ptr<ASTNode> lhs, size_t ln);
     std::unique_ptr<ASTNode> parse_widget(std::unique_ptr<ASTNode> lhs, size_t ln);
     std::unique_ptr<ASTNode> parse_widget_prop(std::unique_ptr<ASTNode> lhs, size_t ln);
+    static TokenType block_end(TokenType open)
+    {
+        return open == LBRACE ? RBRACE : T_END;
+    }
 };
 std::unique_ptr<ASTNode> Parser::parse_program()
 {
@@ -590,8 +613,20 @@ std::unique_ptr<ASTNode> Parser::parse_stmt()
         return parse_for_in();
     case T_FUNC:
         return parse_func();
+    case T_WORKER:
+        next_tok();
+        if (tok.type != T_FUNC)
+        {
+            Console::setColor(Console::Color::Red);
+            std::cerr << "[" << tok.line << "] Syntax error: worker must precede func\n";
+            Console::setColor(Console::Color::Reset);
+            return std::make_unique<ASTNode>(ASTNode::PROGRAM);
+        }
+        return parse_func(true);
     case T_CLASS:
         return parse_class();
+    case T_SWITCH:
+        return parse_switch();
     case T_PROPERTY:
     {
         next_tok();
@@ -661,7 +696,39 @@ std::unique_ptr<ASTNode> Parser::parse_stmt()
         n->val = tok.val;
         next_tok();
         expect(T_IMPORT);
-        expect(SEMI);
+        if (tok.type == LBRACE || tok.type == T_BEGIN)
+        {
+            const TokenType closing = block_end(tok.type);
+            next_tok();
+            n->val2 = "selective";
+            while (tok.type != closing && tok.type != T_EOF)
+            {
+                if (tok.type != IDENT)
+                {
+                    expect(IDENT);
+                    break;
+                }
+                auto name = std::make_unique<ASTNode>(ASTNode::VAR);
+                name->val = tok.val;
+                name->line = tok.line;
+                n->children.push_back(std::move(name));
+                next_tok();
+                if (tok.type == COMMA)
+                    next_tok();
+                else if (tok.type != closing)
+                {
+                    expect(closing);
+                    break;
+                }
+            }
+            expect(closing);
+            if (tok.type == SEMI)
+                next_tok();
+        }
+        else
+        {
+            expect(SEMI);
+        }
         return n;
     }
     case T_RETURN:
@@ -882,7 +949,6 @@ std::unique_ptr<ASTNode> Parser::parse_namespace()
     next_tok();
     std::string ns_name = tok.val;
     expect(IDENT);
-    expect(T_BEGIN);
     auto ns_node = std::make_unique<ASTNode>(ASTNode::NAMESPACE_DEF);
     ns_node->val = ns_name;
     ns_node->line = ln;
@@ -973,7 +1039,13 @@ std::unique_ptr<ASTNode> Parser::parse_switch()
     expect(LPAREN);
     auto subject_expr = parse_expr();
     expect(RPAREN);
-    expect(T_BEGIN);
+    if (tok.type != T_BEGIN && tok.type != LBRACE)
+    {
+        expect(T_BEGIN);
+        return std::make_unique<ASTNode>(ASTNode::SWITCH);
+    }
+    const TokenType closing = block_end(tok.type);
+    next_tok();
 
     auto switch_node = std::make_unique<ASTNode>(ASTNode::SWITCH);
     switch_node->line = ln;
@@ -982,7 +1054,7 @@ std::unique_ptr<ASTNode> Parser::parse_switch()
     std::unordered_set<std::string> case_literals;
     bool seen_default = false;
 
-    while (tok.type != T_END && tok.type != T_EOF)
+    while (tok.type != closing && tok.type != T_EOF)
     {
         size_t case_ln = tok.line;
         bool is_default = (tok.type == T_DEFAULT);
@@ -1061,7 +1133,7 @@ std::unique_ptr<ASTNode> Parser::parse_switch()
 
         switch_node->children.push_back(std::move(case_node));
     }
-    expect(T_END);
+    expect(closing);
     return switch_node;
 }
 std::unique_ptr<ASTNode> Parser::parse_lambda()
@@ -1187,7 +1259,7 @@ std::unique_ptr<ASTNode> Parser::parse_for_in()
     node->children.push_back(parse_block());
     return node;
 }
-std::unique_ptr<ASTNode> Parser::parse_func()
+std::unique_ptr<ASTNode> Parser::parse_func(bool is_worker)
 {
     size_t ln = tok.line;
     next_tok();
@@ -1236,6 +1308,7 @@ std::unique_ptr<ASTNode> Parser::parse_func()
     auto body = parse_block();
     auto node = std::make_unique<ASTNode>(ASTNode::FUNC_DEF);
     node->val = name;
+    node->val2 = is_worker ? "worker" : "";
     node->line = ln;
     for (auto &pn : paramNodes)
     {
@@ -1246,26 +1319,22 @@ std::unique_ptr<ASTNode> Parser::parse_func()
 }
 std::unique_ptr<ASTNode> Parser::parse_block()
 {
-    if (!expect(T_BEGIN))
-        return std::make_unique<ASTNode>(ASTNode::PROGRAM);
-    auto blk = std::make_unique<ASTNode>(ASTNode::PROGRAM);
-    int depth = 1;
-    while (tok.type != T_EOF && depth > 0)
+    if (tok.type != T_BEGIN && tok.type != LBRACE)
     {
-        if (tok.type == T_BEGIN)
-            depth++;
-        else if (tok.type == T_END)
-        {
-            depth--;
-            if (depth == 0)
-                break;
-        }
+        expect(T_BEGIN);
+        return std::make_unique<ASTNode>(ASTNode::PROGRAM);
+    }
+    const TokenType closing = block_end(tok.type);
+    next_tok();
+    auto blk = std::make_unique<ASTNode>(ASTNode::PROGRAM);
+    while (tok.type != T_EOF && tok.type != closing)
+    {
         blk->children.push_back(parse_stmt());
     }
-    if (!expect(T_END))
+    if (!expect(closing))
     {
         Console::setColor(Console::Color::Red);
-        std::cerr << "[" << tok.line << "] Syntax error: missing 'end' for block\n";
+        std::cerr << "[" << tok.line << "] Syntax error: missing block terminator\n";
         Console::setColor(Console::Color::Reset);
     }
     return blk;
@@ -1298,7 +1367,7 @@ std::unique_ptr<ASTNode> Parser::parse_logic_or()
 }
 std::unique_ptr<ASTNode> Parser::parse_logic_and()
 {
-    auto lhs = parse_compare();
+    auto lhs = parse_range();
     while (tok.type == AND_AND)
     {
         std::string op = tok.val;
@@ -1308,10 +1377,24 @@ std::unique_ptr<ASTNode> Parser::parse_logic_and()
         n->val = op;
         n->line = ln;
         n->children.push_back(std::move(lhs));
-        n->children.push_back(parse_compare());
+        n->children.push_back(parse_range());
         lhs = std::move(n);
     }
     return lhs;
+}
+std::unique_ptr<ASTNode> Parser::parse_range()
+{
+    auto lhs = parse_compare();
+    if (tok.type != DOTDOTDOT)
+        return lhs;
+
+    size_t ln = tok.line;
+    next_tok();
+    auto range = std::make_unique<ASTNode>(ASTNode::RANGE);
+    range->line = ln;
+    range->children.push_back(std::move(lhs));
+    range->children.push_back(parse_compare());
+    return range;
 }
 std::unique_ptr<ASTNode> Parser::parse_compare()
 {
@@ -1584,8 +1667,14 @@ std::unique_ptr<ASTNode> Parser::parse_class()
     cls_node->val = cls_name;
     cls_node->val2 = super_name;
     cls_node->line = ln;
-    expect(T_BEGIN);
-    while (tok.type != T_END && tok.type != T_EOF)
+    if (tok.type != T_BEGIN && tok.type != LBRACE)
+    {
+        expect(T_BEGIN);
+        return cls_node;
+    }
+    const TokenType closing = block_end(tok.type);
+    next_tok();
+    while (tok.type != closing && tok.type != T_EOF)
     {
         bool is_static = false;
         if (tok.type == T_STATIC)
@@ -1608,7 +1697,7 @@ std::unique_ptr<ASTNode> Parser::parse_class()
 
         cls_node->children.push_back(std::move(fun_node));
     }
-    expect(T_END);
+    expect(closing);
     return cls_node;
 }
 std::unique_ptr<ASTNode> Parser::parse_new()

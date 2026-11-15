@@ -355,8 +355,10 @@ enum class RtKind
     NUMBER,
     STRING,
     ARRAY,
+    RANGE,
     DICT,
     FUNCTION,
+    TASK,
     NIL,
     CLASS_META,
     OBJECT
@@ -369,6 +371,54 @@ struct RuntimeValueBase
     virtual ~RuntimeValueBase() = default;
     virtual std::string to_string() const = 0;
     virtual std::unique_ptr<RuntimeValueBase> clone() const = 0;
+};
+
+struct LazyRangeValue : RuntimeValueBase
+{
+    BigDecimal start;
+    BigDecimal end;
+    BigDecimal step;
+
+    LazyRangeValue(BigDecimal first, BigDecimal last, BigDecimal increment)
+        : RuntimeValueBase(RtKind::RANGE),
+          start(std::move(first)), end(std::move(last)), step(std::move(increment))
+    {
+        if (step == BigDecimal("0"))
+            throw std::runtime_error("range step cannot be zero");
+    }
+
+    BigDecimal size() const
+    {
+        const BigDecimal distance = step.negative ? start - end : end - start;
+        if (distance <= BigDecimal("0"))
+            return BigDecimal("0");
+
+        BigDecimal magnitude = step;
+        magnitude.negative = false;
+        BigDecimal count = distance / magnitude;
+        if (!count.fractional.empty())
+        {
+            count.fractional.clear();
+            count.normalize();
+            count = count + BigDecimal("1");
+        }
+        return count;
+    }
+
+    bool contains(const BigDecimal &value) const
+    {
+        return step.negative ? value > end : value < end;
+    }
+
+    std::string to_string() const override
+    {
+        return "<range " + start.to_string() + "..." + end.to_string() + ">";
+    }
+
+    std::unique_ptr<RuntimeValueBase> clone() const override
+    {
+        return std::make_unique<LazyRangeValue>(start, end, step);
+    }
 };
 
 struct RuntimeVal;
@@ -406,7 +456,8 @@ struct DictValue : RuntimeValueBase
 struct FuncValue : RuntimeValueBase
 {
     FuncT value;
-    explicit FuncValue(FuncT v);
+    bool is_worker;
+    explicit FuncValue(FuncT v, bool worker = false);
     std::string to_string() const override;
     std::unique_ptr<RuntimeValueBase> clone() const override;
 };
@@ -431,6 +482,8 @@ struct ObjectValue : RuntimeValueBase
     std::unique_ptr<RuntimeValueBase> clone() const override;
 };
 
+struct WorkerTaskState;
+
 struct RuntimeVal
 {
     std::unique_ptr<RuntimeValueBase> ptr;
@@ -439,10 +492,13 @@ struct RuntimeVal
     explicit RuntimeVal(BigDecimal n);
     explicit RuntimeVal(std::string s);
     explicit RuntimeVal(ArrayValue::Array a);
+    explicit RuntimeVal(BigDecimal start, BigDecimal end, BigDecimal step);
     explicit RuntimeVal(DictValue::Dict d);
     explicit RuntimeVal(FuncT f);
+    RuntimeVal(FuncT f, bool worker);
     explicit RuntimeVal(std::shared_ptr<ClassMeta> cm);
     explicit RuntimeVal(std::shared_ptr<ObjectInstance> oi);
+    explicit RuntimeVal(std::shared_ptr<WorkerTaskState> task);
     RuntimeVal(const RuntimeVal &other)
         : ptr(other.ptr ? other.ptr->clone() : nullptr)
     {
@@ -460,6 +516,8 @@ struct RuntimeVal
     const StrValue *as_str() const;
     ArrayValue *as_array();
     const ArrayValue *as_array() const;
+    LazyRangeValue *as_range();
+    const LazyRangeValue *as_range() const;
     DictValue *as_dict();
     const DictValue *as_dict() const;
     FuncValue *as_func();
@@ -468,6 +526,30 @@ struct RuntimeVal
     const ClassMetaValue *as_classmeta() const;
     ObjectValue *as_object();
     const ObjectValue *as_object() const;
+    struct TaskValue *as_task();
+    const struct TaskValue *as_task() const;
+};
+
+struct WorkerTaskState
+{
+    std::atomic<bool> done{false};
+    std::mutex mutex;
+    std::mutex join_mutex;
+    std::thread thread;
+    RuntimeVal result;
+    std::exception_ptr failure;
+};
+
+struct TaskValue : RuntimeValueBase
+{
+    std::shared_ptr<WorkerTaskState> value;
+    explicit TaskValue(std::shared_ptr<WorkerTaskState> state)
+        : RuntimeValueBase(RtKind::TASK), value(std::move(state)) {}
+    std::string to_string() const override { return "<worker task>"; }
+    std::unique_ptr<RuntimeValueBase> clone() const override
+    {
+        return std::make_unique<TaskValue>(value);
+    }
 };
 
 using Array = ArrayValue::Array;
@@ -482,8 +564,8 @@ inline ArrayValue::ArrayValue(Array v)
     : RuntimeValueBase(RtKind::ARRAY), value(std::move(v)) {}
 inline DictValue::DictValue(Dict v)
     : RuntimeValueBase(RtKind::DICT), value(std::move(v)) {}
-inline FuncValue::FuncValue(FuncT v)
-    : RuntimeValueBase(RtKind::FUNCTION), value(std::move(v)) {}
+inline FuncValue::FuncValue(FuncT v, bool worker)
+    : RuntimeValueBase(RtKind::FUNCTION), value(std::move(v)), is_worker(worker) {}
 inline NilValue::NilValue()
     : RuntimeValueBase(RtKind::NIL) {}
 inline ClassMetaValue::ClassMetaValue(std::shared_ptr<ClassMeta> v)
@@ -516,12 +598,18 @@ inline RuntimeVal::RuntimeVal(std::string s)
     : ptr(std::make_unique<StrValue>(std::move(s))) {}
 inline RuntimeVal::RuntimeVal(Array a)
     : ptr(std::make_unique<ArrayValue>(std::move(a))) {}
+inline RuntimeVal::RuntimeVal(BigDecimal start, BigDecimal end, BigDecimal step)
+    : ptr(std::make_unique<LazyRangeValue>(std::move(start), std::move(end), std::move(step))) {}
 inline RuntimeVal::RuntimeVal(Dict d)
     : ptr(std::make_unique<DictValue>(std::move(d))) {}
 inline RuntimeVal::RuntimeVal(FuncT f)
     : ptr(std::make_unique<FuncValue>(std::move(f))) {}
+inline RuntimeVal::RuntimeVal(FuncT f, bool worker)
+    : ptr(std::make_unique<FuncValue>(std::move(f), worker)) {}
 inline RuntimeVal::RuntimeVal(std::shared_ptr<ClassMeta> cm)
     : ptr(std::make_unique<ClassMetaValue>(std::move(cm))) {}
+inline RuntimeVal::RuntimeVal(std::shared_ptr<WorkerTaskState> task)
+    : ptr(std::make_unique<TaskValue>(std::move(task))) {}
 
 inline std::string RuntimeVal::to_string() const
 {
@@ -558,6 +646,14 @@ inline const ArrayValue *RuntimeVal::as_array() const
 {
     return dynamic_cast<const ArrayValue *>(ptr.get());
 }
+inline LazyRangeValue *RuntimeVal::as_range()
+{
+    return dynamic_cast<LazyRangeValue *>(ptr.get());
+}
+inline const LazyRangeValue *RuntimeVal::as_range() const
+{
+    return dynamic_cast<const LazyRangeValue *>(ptr.get());
+}
 inline DictValue *RuntimeVal::as_dict()
 {
     return dynamic_cast<DictValue *>(ptr.get());
@@ -589,6 +685,14 @@ inline ObjectValue *RuntimeVal::as_object()
 inline const ObjectValue *RuntimeVal::as_object() const
 {
     return dynamic_cast<const ObjectValue *>(ptr.get());
+}
+inline TaskValue *RuntimeVal::as_task()
+{
+    return dynamic_cast<TaskValue *>(ptr.get());
+}
+inline const TaskValue *RuntimeVal::as_task() const
+{
+    return dynamic_cast<const TaskValue *>(ptr.get());
 }
 
 inline std::string NumValue::to_string() const
@@ -658,7 +762,7 @@ inline std::string FuncValue::to_string() const
 }
 inline std::unique_ptr<RuntimeValueBase> FuncValue::clone() const
 {
-    return std::make_unique<FuncValue>(value);
+    return std::make_unique<FuncValue>(value, is_worker);
 }
 inline std::string NilValue::to_string() const
 {
@@ -699,6 +803,14 @@ inline bool operator==(const RuntimeVal &a, const RuntimeVal &b)
                 return false;
         return true;
     }
+    case RtKind::RANGE:
+    {
+        const auto *rangeA = a.as_range();
+        const auto *rangeB = b.as_range();
+        return rangeA->start == rangeB->start &&
+               rangeA->end == rangeB->end &&
+               rangeA->step == rangeB->step;
+    }
     case RtKind::DICT:
     {
         const auto &dA = a.as_dict()->value;
@@ -717,6 +829,8 @@ inline bool operator==(const RuntimeVal &a, const RuntimeVal &b)
     }
     case RtKind::FUNCTION:
         return a.as_func()->value.second == b.as_func()->value.second;
+    case RtKind::TASK:
+        return a.as_task()->value.get() == b.as_task()->value.get();
     case RtKind::NIL:
         return true;
     case RtKind::CLASS_META:
@@ -760,6 +874,16 @@ inline bool operator<(const RuntimeVal &a, const RuntimeVal &b)
         }
         return arrA.size() < arrB.size();
     }
+    case RtKind::RANGE:
+    {
+        const auto *rangeA = a.as_range();
+        const auto *rangeB = b.as_range();
+        if (rangeA->start != rangeB->start)
+            return rangeA->start < rangeB->start;
+        if (rangeA->end != rangeB->end)
+            return rangeA->end < rangeB->end;
+        return rangeA->step < rangeB->step;
+    }
     case RtKind::DICT:
     {
         const auto &dA = a.as_dict()->value;
@@ -780,6 +904,8 @@ inline bool operator<(const RuntimeVal &a, const RuntimeVal &b)
     }
     case RtKind::FUNCTION:
         return a.as_func()->value.second < b.as_func()->value.second;
+    case RtKind::TASK:
+        return std::less<const WorkerTaskState *>{}(a.as_task()->value.get(), b.as_task()->value.get());
     case RtKind::NIL:
         return false;
     case RtKind::CLASS_META:

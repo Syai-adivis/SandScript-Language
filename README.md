@@ -34,31 +34,67 @@ cmake --build build-qt
 
 When enabled, Sand widget declarations create Qt widgets. Supported types are
 `Window`, `Widget`, `Label`, `Button`, `TextBox`, `TextArea`, `CheckBox`,
-`RadioButton`, `ComboBox`, `Slider`, `ProgressBar`, `SpinBox`, and `GroupBox`.
+`RadioButton`, `ComboBox`, `Slider`, `ProgressBar`, `SpinBox`, `GroupBox`,
+`ListView`, `TableWidget`, `DateEdit`, and `TabWidget`.
 Common properties include `x`, `y`, `width`, `height`, `isShow`, `visible`,
 `enabled`, `text`, and `title`. `Slider`, `ProgressBar`, and `SpinBox` also
 support `value`, `minimum`, and `maximum`; `ComboBox` supports comma-separated
 `items` and `currentIndex`; text inputs support `placeholderText` and
-`readOnly`. Assign an identifier with `property Ident = name;` and reference
+`readOnly`. `ListView` supports `items` and `currentRow`; `TableWidget` supports
+`rowCount`, `columnCount`, `items` (row-major; set `columnCount` first), and
+`currentRow`/`currentColumn`;
+`DateEdit` accepts an ISO `date`; `TabWidget` accepts nested widgets as pages
+and supports `currentIndex`. `items` can be a string array or a comma-separated
+string. Assign an identifier with `property Ident = name;` and reference
 its readable properties in other widget expressions. Expressions are
 reevaluated when a referenced widget property changes, such as when a window is
 resized or a control value changes.
 
 ```
-widget Window begin
+widget Window {
     property Ident = window;
     property title = "Example";
-    widget Label begin
+    widget Label {
         property x = window.width / 2;
         property y = window.height / 2;
         property text = "Hello World.";
-    end
-end
+    }
+}
 ```
 
 `width` is the canonical spelling; `weith` is also accepted as an alias.
 For example, `widget Slider begin property minimum = 0; property maximum = 100;
 property value = 25; end` creates a slider with its initial range and value.
+Blocks may use either `{ ... }` or the original `begin ... end` syntax.
+
+Functions can be marked as workers. Calling one starts it on a background
+thread and returns a task handle; `worker_done(task)` checks completion and
+`wait(task)` waits for completion and returns the worker's result. Worker
+functions receive a snapshot of visible variables, so assigning to a captured
+variable does not change the caller's scope.
+
+```
+worker func calculate(value) {
+    sleep(100);
+    return value * 2;
+}
+
+task = calculate(21);
+result = wait(task);
+```
+
+`range(start, end[, step])` and the `start...end` literal are lazy,
+end-exclusive ranges. They can be iterated with `for` without allocating an
+array; `len()` and numeric indexing are also supported.
+
+Import all declarations from a file with `from "module.sand" import;`, or
+select top-level declarations:
+
+```
+from "module.sand" import { helper, WidgetType }
+```
+
+The selection may also use `begin ... end` in place of braces.
 
 Button-like controls can connect Qt signals to Sand lambdas with `slot`. Inside
 the lambda, `self` refers to the control whose signal fired:
