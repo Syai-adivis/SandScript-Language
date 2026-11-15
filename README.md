@@ -1,10 +1,7 @@
 
 # SandScript Language
 
-**SandScript** is a modern Interpreted programming language.
-
-> ⚠️ **Status: Early Development**
-> Syntax, APIs and interpreter behaviors are subject to breaking changes. Not ready for production use.
+**SandScript** is a modern Interpreted widget programming language.
 
 ## 🚀 Quick Start
 
@@ -100,11 +97,11 @@ Button-like controls can connect Qt signals to Sand lambdas with `slot`. Inside
 the lambda, `self` refers to the control whose signal fired:
 
 ```
-widget Button begin
-    slot clicked >> lambda () begin
+widget Button {
+    slot clicked >> lambda () {
         self.enabled = false;
-    end
-end
+    }
+}
 ```
 
 An event handler can also be named instead of written as a lambda, for example
