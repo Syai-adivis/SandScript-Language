@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
-project(SandScript VERSION 3.0.0 LANGUAGES CXX)
+project(SandScript VERSION 3.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(SAND_ENABLE_QT_WIDGETS "Enable Qt6 Widgets support for Sand widget declarations" ON)
 
-set(HEADERS RuntimeValue.h analyzer.h includes.h Interpreter.h prepross.h SetColor.h qt_widget_runtime.h)
+set(HEADERS RuntimeValue.h analyzer.h includes.h Interpreter.h prepross.h SetColor.h qt_widget_runtime.h SandPlugin.h)
 set(COMMON_SRCS prepross.cpp)
 set(TARGETS QSandi QSandShell)
-add_executable(QSandi Sandi.cpp prepross.cpp)
-add_executable(QSandShell SandShell.cpp prepross.cpp)
+add_executable(QSandi Sandi.cpp ${COMMON_SRCS})
+add_executable(QSandShell SandShell.cpp ${COMMON_SRCS})
 
 if(SAND_ENABLE_QT_WIDGETS)
     find_package(Qt6 REQUIRED COMPONENTS Widgets)

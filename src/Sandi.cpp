@@ -1,5 +1,8 @@
 #include "Interpreter.h"
 #include "prepross.h"
+#include "RuntimeValue.cpp"
+#include "analyzer.cpp"
+#include "Interpreter.cpp"
 int main(int argc, char *argv[])
 {
 #ifdef _WIN32
@@ -9,7 +12,7 @@ int main(int argc, char *argv[])
     if (argc != 2)
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "SandScript interpreter 3.0.0\n";
+        std::cout << "SandScript interpreter 3.1.0\n";
         std::cout << "Usage: QSandi script.sand\n";
         std::cout << "Example: QSandi test.sand\n";
         Console::setColor(Console::Color::Reset);
@@ -18,7 +21,7 @@ int main(int argc, char *argv[])
     if (std::string(argv[1]) == "--version")
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "3.0.0\n";
+        std::cout << "3.1.0\n";
         Console::setColor(Console::Color::Reset);
         return 0;
     }
@@ -276,7 +279,7 @@ limitations under the License.
     if (std::string(argv[1]) == "--help")
     {
         Console::setColor(Console::Color::Green);
-        std::cout << "SandScript interpreter 3.0.0\n";
+        std::cout << "SandScript interpreter 3.1.0\n";
         std::cout << "Usage: QSandi script.sand\n";
         std::cout << "Example: QSandi test.sand\n";
         std::string help = R"XXX(
@@ -320,7 +323,7 @@ emit_stmt      ::= "emit" IDENT ";" ;
 while_stmt     ::= "while" "(" expr ")" block ;
 for_in_stmt    ::= "for" IDENT "in" expr block ;
 
-func_def_stmt  ::= "func" IDENT "(" param_list ")" block ;
+func_def_stmt  ::= ["declare"] "func" IDENT "(" param_list ")" [block] ;
 worker_func_def_stmt ::= "worker" "func" IDENT "(" param_list ")" block ;
 param_list     ::= [ param ( "," param )* ] ;
 param          ::= IDENT | "..." IDENT ;

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef QT_WIDGET_RUNTIME_H
+#define QT_WIDGET_RUNTIME_H
 
 #include "RuntimeValue.h"
 
@@ -29,6 +30,27 @@
 #include <QTabWidget>
 #include <QVariant>
 #include <QWidget>
+#include <QCalendarWidget>
+#include <QDial>
+#include <QLCDNumber>
+#include <QPlainTextEdit>
+#include <QScrollArea>
+#include <QSplitter>
+#include <QFrame>
+#include <QStackedWidget>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
+#include <QMenuBar>
+#include <QToolBar>
+#include <QStatusBar>
+#include <QPixmap>
+#include <QPainter>
+#include <QTimer>
+#include <QMessageBox>
+#include <QFileDialog>
+#include <QInputDialog>
+#include <QFile>
+#include <QTextStream>
 
 #include <functional>
 #include <memory>
@@ -47,6 +69,10 @@ inline QApplication *ensureApplication()
         return application;
     if (QCoreApplication::instance())
         throw std::runtime_error("Qt Widgets requires QApplication");
+
+    QCoreApplication::addLibraryPath("C:/Qt/6.12.0/mingw_64/plugins");
+    QCoreApplication::addLibraryPath("C:/Qt/6.12.0/plugins");
+    QCoreApplication::addLibraryPath(".");
 
     static int argc = 1;
     static char applicationName[] = "SandScript";
@@ -93,6 +119,83 @@ inline bool toBool(const RuntimeVal &value, const std::string &name)
 }
 }
 
+class SandCanvasWidget : public QWidget
+{
+public:
+    explicit SandCanvasWidget(QWidget *parent = nullptr) : QWidget(parent) {}
+
+    void setBackground(const RuntimeVal &value)
+    {
+        if (auto *string = value.as_str())
+            background = QColor(QString::fromStdString(string->value));
+        update();
+    }
+
+    void drawLine(const RuntimeVal &value);
+    void drawRect(const RuntimeVal &value);
+    void drawText(const RuntimeVal &value);
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.fillRect(rect(), background);
+        for (const auto &line : lines)
+            painter.drawLine(line);
+        for (const auto &rectangle : rectangles)
+            painter.drawRect(rectangle);
+        for (const auto &text : texts)
+            painter.drawText(text.first, text.second);
+    }
+
+private:
+    QColor background = Qt::white;
+    std::vector<QLine> lines;
+    std::vector<QRect> rectangles;
+    std::vector<std::pair<QPoint, QString>> texts;
+};
+
+inline void SandCanvasWidget::drawLine(const RuntimeVal &value)
+{
+    auto *array = value.as_array();
+    if (!array || array->value.size() != 4)
+        throw std::runtime_error("drawLine requires [x1,y1,x2,y2]");
+    lines.push_back(QLine(
+        qt_widget_runtime_detail::toInt(array->value[0], "drawLine"),
+        qt_widget_runtime_detail::toInt(array->value[1], "drawLine"),
+        qt_widget_runtime_detail::toInt(array->value[2], "drawLine"),
+        qt_widget_runtime_detail::toInt(array->value[3], "drawLine")));
+    update();
+}
+
+inline void SandCanvasWidget::drawRect(const RuntimeVal &value)
+{
+    auto *array = value.as_array();
+    if (!array || array->value.size() != 4)
+        throw std::runtime_error("drawRect requires [x,y,width,height]");
+    rectangles.push_back(QRect(
+        qt_widget_runtime_detail::toInt(array->value[0], "drawRect"),
+        qt_widget_runtime_detail::toInt(array->value[1], "drawRect"),
+        qt_widget_runtime_detail::toInt(array->value[2], "drawRect"),
+        qt_widget_runtime_detail::toInt(array->value[3], "drawRect")));
+    update();
+}
+
+inline void SandCanvasWidget::drawText(const RuntimeVal &value)
+{
+    auto *array = value.as_array();
+    if (!array || array->value.size() != 3)
+        throw std::runtime_error("drawText requires [x,y,text]");
+    auto *text = array->value[2].as_str();
+    if (!text)
+        throw std::runtime_error("drawText text must be a string");
+    texts.push_back({
+        QPoint(qt_widget_runtime_detail::toInt(array->value[0], "drawText"),
+               qt_widget_runtime_detail::toInt(array->value[1], "drawText")),
+        QString::fromStdString(text->value)});
+    update();
+}
+
 class QtWidgetRuntime
 {
 public:
@@ -105,6 +208,44 @@ public:
 
     QtWidgetRuntime(const QtWidgetRuntime &) = delete;
     QtWidgetRuntime &operator=(const QtWidgetRuntime &) = delete;
+
+    int createTimer(int intervalMs, bool repeated, std::function<void()> callback)
+    {
+        qt_widget_runtime_detail::ensureApplication();
+        int id = nextTimerId++;
+        auto timer = std::make_shared<QTimer>();
+        timer->setInterval(std::max(0, intervalMs));
+        if (!repeated)
+            timer->setSingleShot(true);
+        QObject::connect(timer.get(), &QTimer::timeout, timer.get(), [callback]() { callback(); });
+        timers[id] = std::move(timer);
+        timers[id]->start();
+        return id;
+    }
+
+    void startTimer(int id)
+    {
+        auto it = timers.find(id);
+        if (it == timers.end())
+            throw std::runtime_error("unknown timer id");
+        it->second->start();
+    }
+
+    void stopTimer(int id)
+    {
+        auto it = timers.find(id);
+        if (it == timers.end())
+            throw std::runtime_error("unknown timer id");
+        it->second->stop();
+    }
+
+    void setTimerInterval(int id, int intervalMs)
+    {
+        auto it = timers.find(id);
+        if (it == timers.end())
+            throw std::runtime_error("unknown timer id");
+        it->second->setInterval(std::max(0, intervalMs));
+    }
 
     QWidget *createWidget(const std::string &type, QWidget *parent = nullptr)
     {
@@ -145,6 +286,34 @@ public:
             widget = new QDateEdit(parent);
         else if (type == "TabWidget")
             widget = new QTabWidget(parent);
+        else if (type == "ScrollArea")
+            widget = new QScrollArea(parent);
+        else if (type == "Splitter")
+            widget = new QSplitter(parent);
+        else if (type == "Frame")
+            widget = new QFrame(parent);
+        else if (type == "Dial")
+            widget = new QDial(parent);
+        else if (type == "LCDNumber")
+            widget = new QLCDNumber(parent);
+        else if (type == "Calendar")
+            widget = new QCalendarWidget(parent);
+        else if (type == "PlainText")
+            widget = new QPlainTextEdit(parent);
+        else if (type == "TreeView")
+            widget = new QTreeWidget(parent);
+        else if (type == "StackWidget")
+            widget = new QStackedWidget(parent);
+        else if (type == "MenuBar")
+            widget = new QMenuBar(parent);
+        else if (type == "ToolBar")
+            widget = new QToolBar(parent);
+        else if (type == "StatusBar")
+            widget = new QStatusBar(parent);
+        else if (type == "Image")
+            widget = new QLabel(parent);
+        else if (type == "Canvas")
+            widget = new SandCanvasWidget(parent);
         else
             throw std::runtime_error("unknown Qt widget type '" + type + "'");
 
@@ -415,12 +584,87 @@ public:
             tabs->addTab(page, page->windowTitle());
     }
 
+    static void applyAnchors(QWidget *widget)
+    {
+        if (!widget)
+            return;
+        QWidget *parent = widget->parentWidget();
+        if (!parent)
+            return;
+        const int margin = widget->property("anchorMargins").isValid()
+                               ? widget->property("anchorMargins").toInt()
+                               : 0;
+        const bool left = widget->property("anchorLeft").toBool();
+        const bool right = widget->property("anchorRight").toBool();
+        const bool top = widget->property("anchorTop").toBool();
+        const bool bottom = widget->property("anchorBottom").toBool();
+        QRect geometry = widget->geometry();
+        if (left)
+            geometry.setLeft(margin);
+        if (right)
+            geometry.setRight(parent->rect().width() - margin);
+        if (top)
+            geometry.setTop(margin);
+        if (bottom)
+            geometry.setBottom(parent->rect().height() - margin);
+        widget->setGeometry(geometry);
+    }
+
     void setProperty(QWidget *widget, const std::string &name, const RuntimeVal &value)
     {
         if (!widget)
             throw std::runtime_error("cannot set a property on a null widget");
 
-        if (name == "x")
+        if (name == "anchorLeft" || name == "anchorRight" || name == "anchorTop" || name == "anchorBottom")
+        {
+            widget->setProperty(name.c_str(), qt_widget_runtime_detail::toBool(value, name));
+            applyAnchors(widget);
+        }
+        else if (name == "anchorMargins")
+        {
+            widget->setProperty(name.c_str(), qt_widget_runtime_detail::toInt(value, name));
+            applyAnchors(widget);
+        }
+        else if (name == "pixmap")
+        {
+            auto *label = qobject_cast<QLabel *>(widget);
+            auto *string = value.as_str();
+            if (!label || !string)
+                throw std::runtime_error("widget property 'pixmap' requires Image and a file path");
+            QPixmap pixmap(QString::fromStdString(string->value));
+            if (pixmap.isNull())
+                throw std::runtime_error("cannot load pixmap '" + string->value + "'");
+            label->setPixmap(pixmap);
+        }
+        else if (name == "background")
+        {
+            if (auto *canvas = dynamic_cast<SandCanvasWidget *>(widget))
+                canvas->setBackground(value);
+            else
+                throw std::runtime_error("widget property 'background' requires Canvas");
+        }
+        else if (name == "drawLine")
+        {
+            auto *canvas = dynamic_cast<SandCanvasWidget *>(widget);
+            if (!canvas)
+                throw std::runtime_error("widget property 'drawLine' requires Canvas");
+            canvas->drawLine(value);
+        }
+        else if (name == "drawRect")
+        {
+            auto *canvas = dynamic_cast<SandCanvasWidget *>(widget);
+            if (!canvas)
+                throw std::runtime_error("widget property 'drawRect' requires Canvas");
+            canvas->drawRect(value);
+        }
+        else if (name == "drawText")
+        {
+            auto *canvas = dynamic_cast<SandCanvasWidget *>(widget);
+            if (!canvas)
+                throw std::runtime_error("widget property 'drawText' requires Canvas");
+            canvas->drawText(value);
+        }
+        else if (name == "x")
             widget->move(qt_widget_runtime_detail::toInt(value, name), widget->y());
         else if (name == "y")
             widget->move(widget->x(), qt_widget_runtime_detail::toInt(value, name));
@@ -661,6 +905,41 @@ public:
         widget->show();
     }
 
+    RuntimeVal messageBox(const std::string &title, const std::string &text)
+    {
+        qt_widget_runtime_detail::ensureApplication();
+        QMessageBox::information(nullptr, QString::fromStdString(title), QString::fromStdString(text));
+        return RuntimeVal();
+    }
+
+    bool confirmDialog(const std::string &title, const std::string &text)
+    {
+        qt_widget_runtime_detail::ensureApplication();
+        return QMessageBox::question(nullptr, QString::fromStdString(title), QString::fromStdString(text),
+                                     QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes;
+    }
+
+    std::string openFileDialog(const std::string &title)
+    {
+        qt_widget_runtime_detail::ensureApplication();
+        return QFileDialog::getOpenFileName(nullptr, QString::fromStdString(title)).toStdString();
+    }
+
+    std::string saveFileDialog(const std::string &title)
+    {
+        qt_widget_runtime_detail::ensureApplication();
+        return QFileDialog::getSaveFileName(nullptr, QString::fromStdString(title)).toStdString();
+    }
+
+    std::string inputDialog(const std::string &title, const std::string &prompt)
+    {
+        qt_widget_runtime_detail::ensureApplication();
+        bool ok = false;
+        QString value = QInputDialog::getText(nullptr, QString::fromStdString(title),
+                                              QString::fromStdString(prompt), QLineEdit::Normal, QString(), &ok);
+        return ok ? value.toStdString() : std::string();
+    }
+
     int runEventLoop()
     {
         auto *application = qobject_cast<QApplication *>(QCoreApplication::instance());
@@ -671,6 +950,19 @@ public:
         {
             if (widget && widget->isVisible())
                 return application->exec();
+        }
+        if (!timers.empty())
+        {
+            const auto started = std::chrono::steady_clock::now();
+            while (std::chrono::steady_clock::now() - started < std::chrono::seconds(30))
+            {
+                application->processEvents(QEventLoop::AllEvents, 10);
+                bool active = false;
+                for (const auto &timer : timers)
+                    active = active || timer.second->isActive();
+                if (!active)
+                    break;
+            }
         }
         return 0;
     }
@@ -780,4 +1072,7 @@ private:
 
     std::vector<QPointer<QWidget>> rootWidgets;
     std::unique_ptr<EventWatcher> eventWatcher;
+    std::unordered_map<int, std::shared_ptr<QTimer>> timers;
+    int nextTimerId = 1;
 };
+#endif

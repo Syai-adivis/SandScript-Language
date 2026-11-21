@@ -2111,18 +2111,9 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 throw std::runtime_error("dialogs require Qt Widgets support");
 #endif
             }
-            if (node->val == "sleep")
+            if (node->val == "timer" || node->val == "timer_start" ||
+                node->val == "timer_stop" || node->val == "timer_set_interval")
             {
-                if (node->children.size() != 1)
-                {
-                    Console::setColor(Console::Color::Red);
-                    std::cerr << "[" << ln << "] Runtime error: sleep() expects 1 argument(ms)\n";
-                    Console::setColor(Console::Color::Reset);
-                    return RuntimeVal();
-                }
-                if (node->val == "timer" || node->val == "timer_start" ||
-                    node->val == "timer_stop" || node->val == "timer_set_interval")
-                {
 #ifdef SAND_ENABLE_QT_WIDGETS
                     if (node->val == "timer")
                     {
@@ -2142,19 +2133,15 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                         if (!callbackFunc)
                             throw std::runtime_error("timer() callback must be function or lambda");
                         FuncT callback = callbackFunc->value;
-                        auto callbackScope = std::make_shared<Scope>();
-                        for (Scope *current = scope; current; current = current->parent)
-                        {
-                            for (const auto &entry : current->vars)
-                                callbackScope->vars.insert_or_assign(entry.first, entry.second.clone());
-                        }
+                        Scope *callbackScope = scope;
+                        const std::weak_ptr<void> scopeLifetime = scope->lifetime;
                         int timerId = qtWidgetRuntime.createTimer(
                             static_cast<int>(interval), true,
-                            [this, callback, callbackScope]()
+                            [this, callback, callbackScope, scopeLifetime]()
                             {
-                                if (!callback.second)
+                                if (scopeLifetime.expired() || !callback.second)
                                     return;
-                                Scope timerScope(callbackScope.get());
+                                Scope timerScope(callbackScope);
                                 EvalFrame timerFrame;
                                 eval(callback.second, &timerScope, timerFrame);
                             });
@@ -2197,15 +2184,21 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                     throw std::runtime_error("timers require Qt Widgets support");
 #endif
                 }
+            if (node->val == "sleep")
+            {
+                if (node->children.size() != 1)
+                {
+                    Console::setColor(Console::Color::Red);
+                    std::cerr << "[" << ln << "] Runtime error: sleep() expects 1 argument(ms)\n";
+                    Console::setColor(Console::Color::Reset);
+                    return RuntimeVal();
+                }
                 EvalFrame arg_frame = EvalFrame::make_expr_frame();
                 auto arg = eval(node->children[0].get(), scope, arg_frame);
                 auto *numptr = arg.as_num();
                 if (!numptr)
                 {
-                    Console::setColor(Console::Color::Red);
-                    std::cerr << "[" << ln << "] Runtime error: sleep() argument must be number\n";
-                    Console::setColor(Console::Color::Reset);
-                    return RuntimeVal();
+                    throw std::runtime_error("sleep() argument must be number");
                 }
                 size_t ms;
                 if (!safe_to_size_t(numptr->value, ms))
@@ -2520,7 +2513,15 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 std::system(strptr->value.c_str());
                 return RuntimeVal();
             }
-            auto fv = scope->get(node->val)->clone();
+            RuntimeVal *functionValue = scope->get(node->val);
+            if (!functionValue)
+            {
+                Console::setColor(Console::Color::Red);
+                std::cerr << "[" << ln << "] Runtime error: undefined function: " << node->val << "\n";
+                Console::setColor(Console::Color::Reset);
+                return RuntimeVal();
+            }
+            auto fv = functionValue->clone();
             auto *fptr = fv.as_func();
             if (!fptr)
             {

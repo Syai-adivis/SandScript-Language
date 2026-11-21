@@ -1,6 +1,9 @@
 #include "Interpreter.h"
 #include "SetColor.h"
 #include "prepross.h"
+#include "RuntimeValue.cpp"
+#include "analyzer.cpp"
+#include "Interpreter.cpp"
 
 #include <cstdlib>
 namespace fs = std::filesystem;
@@ -24,7 +27,7 @@ static void repl_main(const std::string &exePathRaw)
     Console::setColor(Console::Color::Green);
     std::cout << "Shell ";
     Console::setColor(Console::Color::Magenta);
-    std::cout << "3.0.0";
+    std::cout << "3.1.0";
     Console::setColor(Console::Color::BrightGreen);
     std::cout << "Release (enter exit/quit to exit | enter copyright to get license information | enter help to get help information)" << std::endl;
     Console::setColor(Console::Color::Reset);
