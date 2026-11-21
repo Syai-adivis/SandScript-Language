@@ -1,0 +1,4 @@
+id = timer(100, lambda () begin
+    output("tick")
+    timer_stop(id)
+end)

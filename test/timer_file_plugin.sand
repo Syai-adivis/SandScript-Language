@@ -1,0 +1,13 @@
+count = 0
+
+id = timer(100, lambda () begin
+    count = count + 1
+    output(count)
+    if (count >= 3) begin
+        timer_stop(id)
+    end
+end)
+
+written = write_file("test/output.txt", "hello")
+text = read_file("test/output.txt")
+output(text)

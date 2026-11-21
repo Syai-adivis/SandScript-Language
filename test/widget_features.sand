@@ -1,0 +1,18 @@
+declare func calculate(n);
+
+calculate = lambda (n) begin
+    return n * 2
+end
+
+declare class BaseBox;
+
+widget class Panel:Window {
+    export property title = "Exported Panel"
+    export property width = 640
+    export property height = 480
+    export signal closed
+}
+
+widget Panel {
+    property title = "Custom Panel"
+}

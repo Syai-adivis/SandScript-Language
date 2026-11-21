@@ -1,0 +1,4 @@
+f = lambda () begin
+    output("lambda")
+end
+f()

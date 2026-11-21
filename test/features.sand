@@ -1,0 +1,14 @@
+worker func countdown(n) begin
+    for i in 0...n begin
+        if (worker_cancelled()) begin
+            return -1
+        end
+        sleep(20)
+    end
+    return n
+end
+
+task = countdown(100)
+stop_worker(task)
+output(worker_done(task))
+output(wait(task))

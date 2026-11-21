@@ -1,0 +1,11 @@
+num = tonum(prminput("please input a number:"));
+sum = 0;
+i=1;
+tb = time_ms();
+while(i<=num) begin
+    sum = sum + i*i;
+    i=i+1;
+end
+te = time_ms();
+outputLine("Time:",te-tb);
+outputLine("Result:",sum);
