@@ -1,8 +1,12 @@
 {
     "name": "sand-lang",
+    "repository": {
+        "type": "git",
+        "url" : "https://github.com/Syai-adivis/SandScript-Language.git"
+    },
     "displayName": "Sand Language",
     "description": "Sand script language support",
-    "version": "0.3.1",
+    "version": "0.3.2",
     "engines": {
         "vscode": "^1.80.0"
     },

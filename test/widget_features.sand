@@ -1,5 +1,9 @@
 declare func calculate(n);
 
+func onButtonClicked() begin
+    outputLine("Button clicked");
+end
+
 calculate = lambda (n) begin
     return n * 2
 end
@@ -15,4 +19,9 @@ widget class Panel:Window {
 
 widget Panel {
     property title = "Custom Panel"
+}
+
+widget Button {
+    property text = "Click me"
+    slot clicked >> onButtonClicked
 }

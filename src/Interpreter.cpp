@@ -699,8 +699,8 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
                 EvalFrame slot_frame = EvalFrame::make_expr_frame();
                 RuntimeVal slot_value = eval(node->children[1].get(), scope, slot_frame);
                 const auto *function = slot_value.as_func();
-                if (!function)
-                    throw std::runtime_error("Qt slot target must be a lambda");
+                if (!function || !function->value.second)
+                    throw std::runtime_error("Qt slot target must be a function or lambda with an implementation");
 
                 const FuncT slot = function->value;
                 QWidget *sender = widgetStack.back();

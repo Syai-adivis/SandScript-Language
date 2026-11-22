@@ -27,7 +27,7 @@ static void repl_main(const std::string &exePathRaw)
     Console::setColor(Console::Color::Green);
     std::cout << "Shell ";
     Console::setColor(Console::Color::Magenta);
-    std::cout << "3.1.0";
+    std::cout << "3.1.1";
     Console::setColor(Console::Color::BrightGreen);
     std::cout << "Release (enter exit/quit to exit | enter copyright to get license information | enter help to get help information)" << std::endl;
     Console::setColor(Console::Color::Reset);
@@ -43,7 +43,7 @@ static void repl_main(const std::string &exePathRaw)
         if (block_depth > 0)
         {
             Console::setColor(Console::Color::Cyan);
-            std::cout << "  ...> ";
+            std::cout << "  ... ";
             Console::setColor(Console::Color::Reset);
         }
         else
