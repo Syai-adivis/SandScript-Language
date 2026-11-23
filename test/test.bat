@@ -1,2 +1,0 @@
-Sandi src.sand
-pause

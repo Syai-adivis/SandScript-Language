@@ -9,6 +9,9 @@
 #ifdef SAND_ENABLE_QT_WIDGETS
 #include "qt_widget_runtime.h"
 #endif
+#ifdef SAND_ENABLE_QT_NETWORK
+#include "qt_network_runtime.h"
+#endif
 
 static bool safe_to_size_t(const BigDecimal &num, size_t &out)
 {

@@ -1679,6 +1679,35 @@ RuntimeVal Interpreter::eval(ASTNode *node, Scope *scope, EvalFrame &frame)
         case ASTNode::CALL:
         {
             size_t ln = node->line;
+#ifdef SAND_ENABLE_QT_NETWORK
+            if (node->val == "httpGet" || node->val == "httpPost")
+            {
+                const size_t expectedArgs = node->val == "httpGet" ? 1 : 2;
+                if (node->children.size() != expectedArgs)
+                    throw std::runtime_error(node->val + "() expects " +
+                                             std::to_string(expectedArgs) + " argument(s)");
+
+                EvalFrame urlFrame = EvalFrame::make_expr_frame();
+                RuntimeVal urlValue = eval(node->children[0].get(), scope, urlFrame);
+                const auto *url = urlValue.as_str();
+                if (!url)
+                    throw std::runtime_error(node->val + "() URL must be a string");
+
+                std::string body;
+                if (node->val == "httpPost")
+                {
+                    EvalFrame bodyFrame = EvalFrame::make_expr_frame();
+                    RuntimeVal bodyValue = eval(node->children[1].get(), scope, bodyFrame);
+                    const auto *bodyString = bodyValue.as_str();
+                    if (!bodyString)
+                        throw std::runtime_error("httpPost() body must be a string");
+                    body = bodyString->value;
+                }
+
+                return RuntimeVal(qt_network_runtime::request(node->val == "httpGet" ? "GET" : "POST",
+                                                              url->value, body));
+            }
+#endif
             if (node->val == "output")
             {
                 for (auto &child : node->children)
