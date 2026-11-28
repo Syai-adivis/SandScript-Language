@@ -20,16 +20,6 @@ Run the Interpreter:
 QSandi hello.sand
 ```
 
-## 🌐 HTTP requests
-
-The built-in `httpGet(url)` and `httpPost(url, body)` functions make synchronous
-HTTP/HTTPS requests and return the response body as a string. `httpPost` sends
-its body as UTF-8 text. Requests time out after 30 seconds; invalid URLs and
-network or HTTP errors are reported as runtime errors.
-
-Qt6 Network support is enabled by default. To build without it, configure CMake
-with `-DSAND_ENABLE_QT_NETWORK=OFF`.
-
 ## 📂 Project Structure
 
 ```

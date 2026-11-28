@@ -151,7 +151,7 @@ struct Lexer
         for (;;)
         {
             unsigned char ch = static_cast<unsigned char>(peek());
-            bool ok = std::isalnum(ch) || peek() == '_' || peek() > 0x7F;
+            bool ok = std::isalnum(ch) || ch == '_' || ch > 0x7F;
             if (!ok)
                 break;
             consume();
@@ -261,7 +261,7 @@ struct Lexer
         unsigned char c = static_cast<unsigned char>(rc);
         if (!c)
             return Token{T_EOF, "", idx, ln};
-        if (isalpha(c) || c > 0x7F)
+        if (isalpha(c) || c > 0x7F || c == '_')
             return read_ident();
         if (isdigit(c))
             return read_num();

@@ -10,24 +10,47 @@
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDate>
+#include <QDateTime>
 #include <QDateEdit>
+#include <QDateTimeEdit>
+#include <QDialogButtonBox>
+#include <QDockWidget>
+#include <QDoubleSpinBox>
 #include <QDynamicPropertyChangeEvent>
 #include <QEvent>
+#include <QFontComboBox>
+#include <QGraphicsView>
 #include <QGroupBox>
+#include <QKeySequenceEdit>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListView>
 #include <QListWidget>
+#include <QMdiArea>
 #include <QObject>
 #include <QProgressBar>
 #include <QPointer>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QScrollBar>
 #include <QSlider>
 #include <QSpinBox>
+#include <QStandardItem>
+#include <QStandardItemModel>
+#include <QTableView>
 #include <QTextEdit>
+#include <QTextBrowser>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTabWidget>
+#include <QTimeEdit>
+#include <QToolBox>
+#include <QToolButton>
+#include <QCommandLinkButton>
+#include <QColumnView>
+#include <QTime>
+#include <QTreeView>
+#include <QUndoView>
 #include <QVariant>
 #include <QWidget>
 #include <QCalendarWidget>
@@ -51,6 +74,21 @@
 #include <QInputDialog>
 #include <QFile>
 #include <QTextStream>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGridLayout>
+#include <QFormLayout>
+#include <QLayout>
+#include <QSpacerItem>
+#include <QSizePolicy>
+
+#ifdef SAND_ENABLE_QT_OPENGL_WIDGETS
+#include <QOpenGLWidget>
+#endif
+
+#ifdef SAND_ENABLE_QT_QUICK_WIDGETS
+#include <QQuickWidget>
+#endif
 
 #include <functional>
 #include <memory>
@@ -107,6 +145,18 @@ inline int toInt(const RuntimeVal &value, const std::string &name)
     const int converted = QString::fromStdString(number->value.to_string()).toInt(&ok);
     if (!ok)
         throw std::runtime_error("widget property '" + name + "' requires an integer");
+    return converted;
+}
+
+inline double toDouble(const RuntimeVal &value, const std::string &name)
+{
+    const auto *number = value.as_num();
+    if (!number)
+        throw std::runtime_error("widget property '" + name + "' requires a number");
+    bool ok = false;
+    const double converted = QString::fromStdString(number->value.to_string()).toDouble(&ok);
+    if (!ok)
+        throw std::runtime_error("widget property '" + name + "' is outside Qt's supported range");
     return converted;
 }
 
@@ -251,6 +301,29 @@ public:
     {
         qt_widget_runtime_detail::ensureApplication();
 
+        if (type == "VerticalLayout" || type == "HorizontalLayout" ||
+            type == "GridLayout" || type == "FormLayout")
+        {
+            QWidget *layoutHost = parent ? parent : new QWidget();
+            if (layoutHost->layout())
+                throw std::runtime_error("a widget can have only one layout");
+            if (type == "VerticalLayout")
+                layoutHost->setLayout(new QVBoxLayout());
+            else if (type == "HorizontalLayout")
+                layoutHost->setLayout(new QHBoxLayout());
+            else if (type == "GridLayout")
+                layoutHost->setLayout(new QGridLayout());
+            else
+                layoutHost->setLayout(new QFormLayout());
+            layoutHost->setProperty("sandLayoutContainer", true);
+            if (!parent)
+            {
+                layoutHost->resize(640, 480);
+                rootWidgets.emplace_back(layoutHost);
+            }
+            return layoutHost;
+        }
+
         QWidget *widget = nullptr;
         if (type == "Window")
             widget = new QWidget(parent, parent ? Qt::Widget : Qt::Window);
@@ -260,10 +333,18 @@ public:
             widget = new QLabel(parent);
         else if (type == "Button")
             widget = new QPushButton(parent);
+        else if (type == "ToolButton")
+            widget = new QToolButton(parent);
+        else if (type == "CommandLinkButton")
+            widget = new QCommandLinkButton(parent);
+        else if (type == "DialogButtonBox")
+            widget = new QDialogButtonBox(parent);
         else if (type == "TextBox")
             widget = new QLineEdit(parent);
         else if (type == "TextArea")
             widget = new QTextEdit(parent);
+        else if (type == "TextBrowser")
+            widget = new QTextBrowser(parent);
         else if (type == "CheckBox")
             widget = new QCheckBox(parent);
         else if (type == "RadioButton")
@@ -276,16 +357,52 @@ public:
             widget = new QProgressBar(parent);
         else if (type == "SpinBox")
             widget = new QSpinBox(parent);
+        else if (type == "DoubleSpinBox")
+            widget = new QDoubleSpinBox(parent);
+        else if (type == "TimeEdit")
+            widget = new QTimeEdit(parent);
+        else if (type == "DateTimeEdit")
+            widget = new QDateTimeEdit(parent);
+        else if (type == "FontComboBox")
+            widget = new QFontComboBox(parent);
+        else if (type == "KeySequenceEdit")
+            widget = new QKeySequenceEdit(parent);
+        else if (type == "HorizontalScrollBar")
+            widget = new QScrollBar(Qt::Horizontal, parent);
+        else if (type == "VerticalScrollBar")
+            widget = new QScrollBar(Qt::Vertical, parent);
+        else if (type == "HorizontalSlider")
+            widget = new QSlider(Qt::Horizontal, parent);
+        else if (type == "VerticalSlider")
+            widget = new QSlider(Qt::Vertical, parent);
         else if (type == "GroupBox")
             widget = new QGroupBox(parent);
-        else if (type == "ListView")
-            widget = new QListWidget(parent);
+        else if (type == "ListView" || type == "ModelListView")
+            widget = new QListView(parent);
         else if (type == "TableWidget")
             widget = new QTableWidget(parent);
         else if (type == "DateEdit")
             widget = new QDateEdit(parent);
+        else if (type == "ListWidget")
+            widget = new QListWidget(parent);
+        else if (type == "TreeView" || type == "ModelTreeView")
+            widget = new QTreeView(parent);
+        else if (type == "TableView")
+            widget = new QTableView(parent);
+        else if (type == "ColumnView")
+            widget = new QColumnView(parent);
+        else if (type == "UndoView")
+            widget = new QUndoView(parent);
+        else if (type == "TreeWidget")
+            widget = new QTreeWidget(parent);
         else if (type == "TabWidget")
             widget = new QTabWidget(parent);
+        else if (type == "ToolBox")
+            widget = new QToolBox(parent);
+        else if (type == "MdiArea")
+            widget = new QMdiArea(parent);
+        else if (type == "DockWidget")
+            widget = new QDockWidget(parent);
         else if (type == "ScrollArea")
             widget = new QScrollArea(parent);
         else if (type == "Splitter")
@@ -300,8 +417,6 @@ public:
             widget = new QCalendarWidget(parent);
         else if (type == "PlainText")
             widget = new QPlainTextEdit(parent);
-        else if (type == "TreeView")
-            widget = new QTreeWidget(parent);
         else if (type == "StackWidget")
             widget = new QStackedWidget(parent);
         else if (type == "MenuBar")
@@ -310,6 +425,37 @@ public:
             widget = new QToolBar(parent);
         else if (type == "StatusBar")
             widget = new QStatusBar(parent);
+        else if (type == "GraphicsView")
+            widget = new QGraphicsView(parent);
+        else if (type == "HorizontalLine" || type == "VerticalLine")
+        {
+            auto *line = new QFrame(parent);
+            line->setFrameShape(type == "HorizontalLine" ? QFrame::HLine : QFrame::VLine);
+            line->setFrameShadow(QFrame::Sunken);
+            widget = line;
+        }
+        else if (type == "HorizontalSpacer" || type == "VerticalSpacer")
+        {
+            widget = new QWidget(parent);
+            widget->hide();
+            widget->setProperty("sandSpacer", type == "HorizontalSpacer" ? "horizontal" : "vertical");
+            widget->setSizePolicy(type == "HorizontalSpacer" ? QSizePolicy::Expanding : QSizePolicy::Minimum,
+                                  type == "VerticalSpacer" ? QSizePolicy::Expanding : QSizePolicy::Minimum);
+        }
+#ifdef SAND_ENABLE_QT_OPENGL_WIDGETS
+        else if (type == "OpenGLWidget")
+            widget = new QOpenGLWidget(parent);
+#else
+        else if (type == "OpenGLWidget")
+            throw std::runtime_error("OpenGLWidget is unavailable; rebuild with Qt6 OpenGLWidgets");
+#endif
+#ifdef SAND_ENABLE_QT_QUICK_WIDGETS
+        else if (type == "QuickWidget" || type == "QmlWidget")
+            widget = new QQuickWidget(parent);
+#else
+        else if (type == "QuickWidget" || type == "QmlWidget")
+            throw std::runtime_error("QuickWidget is unavailable; rebuild with Qt6 QuickWidgets");
+#endif
         else if (type == "Image")
             widget = new QLabel(parent);
         else if (type == "Canvas")
@@ -317,9 +463,17 @@ public:
         else
             throw std::runtime_error("unknown Qt widget type '" + type + "'");
 
+        if (type == "ListView" || type == "ModelListView" || type == "TreeView" ||
+            type == "ModelTreeView" || type == "TableView" || type == "ColumnView")
+        {
+            auto *model = new QStandardItemModel(widget);
+            model->setColumnCount(1);
+            qobject_cast<QAbstractItemView *>(widget)->setModel(model);
+        }
+
         if (!parent)
         {
-            if (type == "Window")
+            if (type == "Window" || widget->property("sandLayoutContainer").toBool())
                 widget->resize(640, 480);
             rootWidgets.emplace_back(widget);
         }
@@ -354,10 +508,14 @@ public:
                 return RuntimeVal(lineEdit->text().toStdString());
             if (auto *textEdit = qobject_cast<QTextEdit *>(widget))
                 return RuntimeVal(textEdit->toPlainText().toStdString());
+            if (auto *plainText = qobject_cast<QPlainTextEdit *>(widget))
+                return RuntimeVal(plainText->toPlainText().toStdString());
             if (auto *checkBox = qobject_cast<QCheckBox *>(widget))
                 return RuntimeVal(checkBox->text().toStdString());
             if (auto *radioButton = qobject_cast<QRadioButton *>(widget))
                 return RuntimeVal(radioButton->text().toStdString());
+            if (auto *button = qobject_cast<QAbstractButton *>(widget))
+                return RuntimeVal(button->text().toStdString());
             if (auto *groupBox = qobject_cast<QGroupBox *>(widget))
                 return RuntimeVal(groupBox->title().toStdString());
             return RuntimeVal(widget->windowTitle().toStdString());
@@ -370,6 +528,8 @@ public:
                 return RuntimeVal(BigDecimal(progress->value()));
             if (auto *spinBox = qobject_cast<QSpinBox *>(widget))
                 return RuntimeVal(BigDecimal(spinBox->value()));
+            if (auto *spinBox = qobject_cast<QDoubleSpinBox *>(widget))
+                return RuntimeVal(BigDecimal(QString::number(spinBox->value(), 'g', 15).toStdString()));
         }
         if (name == "minimum" || name == "maximum")
         {
@@ -380,6 +540,8 @@ public:
                 return RuntimeVal(BigDecimal(minimum ? progress->minimum() : progress->maximum()));
             if (auto *spinBox = qobject_cast<QSpinBox *>(widget))
                 return RuntimeVal(BigDecimal(minimum ? spinBox->minimum() : spinBox->maximum()));
+            if (auto *spinBox = qobject_cast<QDoubleSpinBox *>(widget))
+                return RuntimeVal(BigDecimal(QString::number(minimum ? spinBox->minimum() : spinBox->maximum(), 'g', 15).toStdString()));
         }
         if (name == "checked")
         {
@@ -392,6 +554,8 @@ public:
                 return RuntimeVal(BigDecimal(comboBox->currentIndex()));
             if (auto *tabs = qobject_cast<QTabWidget *>(widget))
                 return RuntimeVal(BigDecimal(tabs->currentIndex()));
+            if (auto *view = qobject_cast<QAbstractItemView *>(widget))
+                return RuntimeVal(BigDecimal(view->currentIndex().row()));
         }
         if (name == "currentText")
         {
@@ -399,6 +563,10 @@ public:
                 return RuntimeVal(comboBox->currentText().toStdString());
             if (auto *list = qobject_cast<QListWidget *>(widget))
                 return RuntimeVal(list->currentItem() ? list->currentItem()->text().toStdString() : std::string());
+            if (auto *view = qobject_cast<QAbstractItemView *>(widget))
+                return RuntimeVal(view->currentIndex().data().toString().toStdString());
+            if (auto *fontCombo = qobject_cast<QFontComboBox *>(widget))
+                return RuntimeVal(fontCombo->currentFont().family().toStdString());
         }
         if (name == "currentRow")
         {
@@ -406,26 +574,54 @@ public:
                 return RuntimeVal(BigDecimal(list->currentRow()));
             if (auto *table = qobject_cast<QTableWidget *>(widget))
                 return RuntimeVal(BigDecimal(table->currentRow()));
+            if (auto *view = qobject_cast<QAbstractItemView *>(widget))
+                return RuntimeVal(BigDecimal(view->currentIndex().row()));
         }
         if (name == "currentColumn")
         {
             if (auto *table = qobject_cast<QTableWidget *>(widget))
                 return RuntimeVal(BigDecimal(table->currentColumn()));
+            if (auto *view = qobject_cast<QAbstractItemView *>(widget))
+                return RuntimeVal(BigDecimal(view->currentIndex().column()));
         }
         if (name == "rowCount")
         {
             if (auto *table = qobject_cast<QTableWidget *>(widget))
                 return RuntimeVal(BigDecimal(table->rowCount()));
+            if (auto *view = qobject_cast<QAbstractItemView *>(widget))
+                return RuntimeVal(BigDecimal(view->model() ? view->model()->rowCount() : 0));
         }
         if (name == "columnCount")
         {
             if (auto *table = qobject_cast<QTableWidget *>(widget))
                 return RuntimeVal(BigDecimal(table->columnCount()));
+            if (auto *view = qobject_cast<QAbstractItemView *>(widget))
+                return RuntimeVal(BigDecimal(view->model() ? view->model()->columnCount() : 0));
         }
         if (name == "date")
         {
             if (auto *dateEdit = qobject_cast<QDateEdit *>(widget))
                 return RuntimeVal(dateEdit->date().toString(Qt::ISODate).toStdString());
+        }
+        if (name == "time")
+        {
+            if (auto *dateTimeEdit = qobject_cast<QDateTimeEdit *>(widget))
+                return RuntimeVal(dateTimeEdit->time().toString(Qt::ISODateWithMs).toStdString());
+        }
+        if (name == "dateTime")
+        {
+            if (auto *dateTimeEdit = qobject_cast<QDateTimeEdit *>(widget))
+                return RuntimeVal(dateTimeEdit->dateTime().toString(Qt::ISODateWithMs).toStdString());
+        }
+        if (name == "currentFont")
+        {
+            if (auto *fontCombo = qobject_cast<QFontComboBox *>(widget))
+                return RuntimeVal(fontCombo->currentFont().family().toStdString());
+        }
+        if (name == "keySequence")
+        {
+            if (auto *keySequence = qobject_cast<QKeySequenceEdit *>(widget))
+                return RuntimeVal(keySequence->keySequence().toString(QKeySequence::NativeText).toStdString());
         }
         if (name == "items")
         {
@@ -450,6 +646,15 @@ public:
                         const auto *cell = table->item(row, column);
                         items.emplace_back(cell ? cell->text().toStdString() : std::string());
                     }
+                return RuntimeVal(std::move(items));
+            }
+            if (auto *view = qobject_cast<QAbstractItemView *>(widget))
+            {
+                if (!view->model())
+                    return RuntimeVal(std::move(items));
+                for (int row = 0; row < view->model()->rowCount(); ++row)
+                    for (int column = 0; column < view->model()->columnCount(); ++column)
+                        items.emplace_back(view->model()->data(view->model()->index(row, column)).toString().toStdString());
                 return RuntimeVal(std::move(items));
             }
         }
@@ -523,11 +728,45 @@ public:
             return;
         }
 
+        if (auto *spinBox = qobject_cast<QDoubleSpinBox *>(widget))
+        {
+            if (signal != "valueChanged")
+                throw std::runtime_error("unsupported double spin box signal '" + signal + "'");
+            QObject::connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), eventWatcher.get(), [callback](double) { callback(); });
+            return;
+        }
+
         if (auto *lineEdit = qobject_cast<QLineEdit *>(widget))
         {
             if (signal != "textChanged")
                 throw std::runtime_error("unsupported text box signal '" + signal + "'");
             QObject::connect(lineEdit, &QLineEdit::textChanged, eventWatcher.get(), [callback](const QString &) { callback(); });
+            return;
+        }
+
+        if (auto *plainText = qobject_cast<QPlainTextEdit *>(widget))
+        {
+            if (signal != "textChanged")
+                throw std::runtime_error("unsupported plain text signal '" + signal + "'");
+            QObject::connect(plainText, &QPlainTextEdit::textChanged, eventWatcher.get(), callback);
+            return;
+        }
+
+        if (auto *keySequenceEdit = qobject_cast<QKeySequenceEdit *>(widget))
+        {
+            if (signal != "keySequenceChanged")
+                throw std::runtime_error("unsupported key sequence signal '" + signal + "'");
+            QObject::connect(keySequenceEdit, &QKeySequenceEdit::keySequenceChanged, eventWatcher.get(),
+                             [callback](const QKeySequence &) { callback(); });
+            return;
+        }
+
+        if (auto *fontCombo = qobject_cast<QFontComboBox *>(widget))
+        {
+            if (signal != "currentFontChanged")
+                throw std::runtime_error("unsupported font combo box signal '" + signal + "'");
+            QObject::connect(fontCombo, &QFontComboBox::currentFontChanged, eventWatcher.get(),
+                             [callback](const QFont &) { callback(); });
             return;
         }
 
@@ -559,11 +798,28 @@ public:
             return;
         }
 
-        if (auto *dateEdit = qobject_cast<QDateEdit *>(widget))
+        if (auto *view = qobject_cast<QAbstractItemView *>(widget))
         {
-            if (signal != "dateChanged")
-                throw std::runtime_error("unsupported date edit signal '" + signal + "'");
-            QObject::connect(dateEdit, &QDateEdit::dateChanged, eventWatcher.get(), [callback](const QDate &) { callback(); });
+            if (signal != "currentChanged" && signal != "currentIndexChanged" &&
+                signal != "currentRowChanged" && signal != "currentCellChanged")
+                throw std::runtime_error("unsupported item view signal '" + signal + "'");
+            if (!view->selectionModel())
+                throw std::runtime_error("item view signal requires a model");
+            QObject::connect(view->selectionModel(), &QItemSelectionModel::currentChanged, eventWatcher.get(),
+                             [callback](const QModelIndex &, const QModelIndex &) { callback(); });
+            return;
+        }
+
+        if (auto *dateTimeEdit = qobject_cast<QDateTimeEdit *>(widget))
+        {
+            if (signal == "dateChanged")
+                QObject::connect(dateTimeEdit, &QDateTimeEdit::dateChanged, eventWatcher.get(), [callback](const QDate &) { callback(); });
+            else if (signal == "timeChanged")
+                QObject::connect(dateTimeEdit, &QDateTimeEdit::timeChanged, eventWatcher.get(), [callback](const QTime &) { callback(); });
+            else if (signal == "dateTimeChanged")
+                QObject::connect(dateTimeEdit, &QDateTimeEdit::dateTimeChanged, eventWatcher.get(), [callback](const QDateTime &) { callback(); });
+            else
+                throw std::runtime_error("unsupported date/time edit signal '" + signal + "'");
             return;
         }
 
@@ -580,8 +836,46 @@ public:
 
     void addTabPage(QWidget *parent, QWidget *page)
     {
-        if (auto *tabs = qobject_cast<QTabWidget *>(parent))
+        if (!parent || !page || parent == page)
+            return;
+        if (parent->property("sandLayoutContainer").toBool())
+        {
+            QLayout *layout = parent->layout();
+            const QString spacer = page->property("sandSpacer").toString();
+            if (spacer == "horizontal" || spacer == "vertical")
+            {
+                layout->addItem(new QSpacerItem(
+                    0, 0,
+                    spacer == "horizontal" ? QSizePolicy::Expanding : QSizePolicy::Minimum,
+                    spacer == "vertical" ? QSizePolicy::Expanding : QSizePolicy::Minimum));
+            }
+            else if (auto *form = qobject_cast<QFormLayout *>(layout))
+                form->addRow(page);
+            else if (auto *grid = qobject_cast<QGridLayout *>(layout))
+            {
+                const int row = grid->property("sandNextRow").toInt();
+                grid->addWidget(page, row, 0);
+                grid->setProperty("sandNextRow", row + 1);
+            }
+            else
+                layout->addWidget(page);
+        }
+        else if (auto *tabs = qobject_cast<QTabWidget *>(parent))
             tabs->addTab(page, page->windowTitle());
+        else if (auto *toolBox = qobject_cast<QToolBox *>(parent))
+            toolBox->addItem(page, page->windowTitle());
+        else if (auto *stack = qobject_cast<QStackedWidget *>(parent))
+            stack->addWidget(page);
+        else if (auto *splitter = qobject_cast<QSplitter *>(parent))
+            splitter->addWidget(page);
+        else if (auto *mdiArea = qobject_cast<QMdiArea *>(parent))
+            mdiArea->addSubWindow(page);
+        else if (auto *dock = qobject_cast<QDockWidget *>(parent))
+        {
+            if (dock->widget())
+                throw std::runtime_error("DockWidget can contain only one child widget");
+            dock->setWidget(page);
+        }
     }
 
     static void applyAnchors(QWidget *widget)
@@ -690,10 +984,14 @@ public:
                 lineEdit->setText(text);
             else if (auto *textEdit = qobject_cast<QTextEdit *>(widget))
                 textEdit->setPlainText(text);
+            else if (auto *plainText = qobject_cast<QPlainTextEdit *>(widget))
+                plainText->setPlainText(text);
             else if (auto *checkBox = qobject_cast<QCheckBox *>(widget))
                 checkBox->setText(text);
             else if (auto *radioButton = qobject_cast<QRadioButton *>(widget))
                 radioButton->setText(text);
+            else if (auto *button = qobject_cast<QAbstractButton *>(widget))
+                button->setText(text);
             else if (auto *groupBox = qobject_cast<QGroupBox *>(widget))
                 groupBox->setTitle(text);
             else
@@ -712,43 +1010,59 @@ public:
         }
         else if (name == "value")
         {
-            const int number = qt_widget_runtime_detail::toInt(value, name);
-            if (auto *slider = qobject_cast<QAbstractSlider *>(widget))
-                slider->setValue(number);
-            else if (auto *progress = qobject_cast<QProgressBar *>(widget))
-                progress->setValue(number);
-            else if (auto *spinBox = qobject_cast<QSpinBox *>(widget))
-                spinBox->setValue(number);
+            if (auto *spinBox = qobject_cast<QDoubleSpinBox *>(widget))
+                spinBox->setValue(qt_widget_runtime_detail::toDouble(value, name));
             else
-                throw std::runtime_error("widget property 'value' requires Slider, ProgressBar, or SpinBox");
+            {
+                const int number = qt_widget_runtime_detail::toInt(value, name);
+                if (auto *slider = qobject_cast<QAbstractSlider *>(widget))
+                    slider->setValue(number);
+                else if (auto *progress = qobject_cast<QProgressBar *>(widget))
+                    progress->setValue(number);
+                else if (auto *spinBox = qobject_cast<QSpinBox *>(widget))
+                    spinBox->setValue(number);
+                else
+                    throw std::runtime_error("widget property 'value' requires Slider, ProgressBar, or a spin box");
+            }
         }
         else if (name == "minimum" || name == "maximum")
         {
-            const int number = qt_widget_runtime_detail::toInt(value, name);
             const bool minimum = name == "minimum";
-            if (auto *slider = qobject_cast<QAbstractSlider *>(widget))
+            if (auto *spinBox = qobject_cast<QDoubleSpinBox *>(widget))
             {
+                const double converted = qt_widget_runtime_detail::toDouble(value, name);
                 if (minimum)
-                    slider->setMinimum(number);
+                    spinBox->setMinimum(converted);
                 else
-                    slider->setMaximum(number);
-            }
-            else if (auto *progress = qobject_cast<QProgressBar *>(widget))
-            {
-                if (minimum)
-                    progress->setMinimum(number);
-                else
-                    progress->setMaximum(number);
-            }
-            else if (auto *spinBox = qobject_cast<QSpinBox *>(widget))
-            {
-                if (minimum)
-                    spinBox->setMinimum(number);
-                else
-                    spinBox->setMaximum(number);
+                    spinBox->setMaximum(converted);
             }
             else
-                throw std::runtime_error("widget property '" + name + "' requires Slider, ProgressBar, or SpinBox");
+            {
+                const int number = qt_widget_runtime_detail::toInt(value, name);
+                if (auto *slider = qobject_cast<QAbstractSlider *>(widget))
+                {
+                    if (minimum)
+                        slider->setMinimum(number);
+                    else
+                        slider->setMaximum(number);
+                }
+                else if (auto *progress = qobject_cast<QProgressBar *>(widget))
+                {
+                    if (minimum)
+                        progress->setMinimum(number);
+                    else
+                        progress->setMaximum(number);
+                }
+                else if (auto *spinBox = qobject_cast<QSpinBox *>(widget))
+                {
+                    if (minimum)
+                        spinBox->setMinimum(number);
+                    else
+                        spinBox->setMaximum(number);
+                }
+                else
+                    throw std::runtime_error("widget property '" + name + "' requires Slider, ProgressBar, or a spin box");
+            }
         }
         else if (name == "checked")
         {
@@ -767,8 +1081,14 @@ public:
                 comboBox->setCurrentIndex(index);
             else if (auto *tabs = qobject_cast<QTabWidget *>(widget))
                 tabs->setCurrentIndex(index);
+            else if (auto *view = qobject_cast<QAbstractItemView *>(widget))
+            {
+                if (!view->model())
+                    throw std::runtime_error("widget property 'currentIndex' requires an item view model");
+                view->setCurrentIndex(view->model()->index(index, 0));
+            }
             else
-                throw std::runtime_error("widget property 'currentIndex' requires ComboBox or TabWidget");
+                throw std::runtime_error("widget property 'currentIndex' requires a combo box, tab, or item view");
         }
         else if (name == "placeholderText")
         {
@@ -796,9 +1116,9 @@ public:
         else if (name == "orientation")
         {
             const auto *string = value.as_str();
-            auto *slider = qobject_cast<QSlider *>(widget);
+            auto *slider = qobject_cast<QAbstractSlider *>(widget);
             if (!slider || !string)
-                throw std::runtime_error("widget property 'orientation' requires Slider and a string");
+                throw std::runtime_error("widget property 'orientation' requires a slider or scroll bar and a string");
             if (string->value == "horizontal")
                 slider->setOrientation(Qt::Horizontal);
             else if (string->value == "vertical")
@@ -839,6 +1159,21 @@ public:
                 list->clear();
                 list->addItems(items);
             }
+            else if (auto *view = qobject_cast<QAbstractItemView *>(widget);
+                     view && !qobject_cast<QTableWidget *>(widget))
+            {
+                auto *model = qobject_cast<QStandardItemModel *>(view->model());
+                if (!model)
+                    throw std::runtime_error("widget property 'items' requires a standard item model");
+                if (model->columnCount() == 0)
+                    model->setColumnCount(1);
+                model->removeRows(0, model->rowCount());
+                const int columns = model->columnCount();
+                model->setRowCount(static_cast<int>((items.size() + columns - 1) / columns));
+                for (qsizetype i = 0; i < items.size(); ++i)
+                    model->setItem(static_cast<int>(i / columns), static_cast<int>(i % columns),
+                                   new QStandardItem(items[i]));
+            }
             else if (auto *table = qobject_cast<QTableWidget *>(widget))
             {
                 if (table->columnCount() == 0)
@@ -851,7 +1186,7 @@ public:
                                    new QTableWidgetItem(items[i]));
             }
             else
-                throw std::runtime_error("widget property 'items' requires ListView or TableWidget");
+                throw std::runtime_error("widget property 'items' requires a list or table view");
         }
         else if (name == "currentRow")
         {
@@ -860,28 +1195,55 @@ public:
                 list->setCurrentRow(row);
             else if (auto *table = qobject_cast<QTableWidget *>(widget))
                 table->setCurrentCell(row, std::max(0, table->currentColumn()));
+            else if (auto *view = qobject_cast<QAbstractItemView *>(widget))
+            {
+                if (!view->model())
+                    throw std::runtime_error("widget property 'currentRow' requires an item view model");
+                view->setCurrentIndex(view->model()->index(row, std::max(0, view->currentIndex().column())));
+            }
             else
-                throw std::runtime_error("widget property 'currentRow' requires ListView or TableWidget");
+                throw std::runtime_error("widget property 'currentRow' requires an item view");
         }
         else if (name == "currentColumn")
         {
             auto *table = qobject_cast<QTableWidget *>(widget);
-            if (!table)
-                throw std::runtime_error("widget property 'currentColumn' requires TableWidget");
-            table->setCurrentCell(std::max(0, table->currentRow()), qt_widget_runtime_detail::toInt(value, name));
+            const int column = qt_widget_runtime_detail::toInt(value, name);
+            if (table)
+                table->setCurrentCell(std::max(0, table->currentRow()), column);
+            else if (auto *view = qobject_cast<QAbstractItemView *>(widget))
+            {
+                if (!view->model())
+                    throw std::runtime_error("widget property 'currentColumn' requires an item view model");
+                view->setCurrentIndex(view->model()->index(std::max(0, view->currentIndex().row()), column));
+            }
+            else
+                throw std::runtime_error("widget property 'currentColumn' requires a table view");
         }
         else if (name == "rowCount" || name == "columnCount")
         {
             auto *table = qobject_cast<QTableWidget *>(widget);
-            if (!table)
-                throw std::runtime_error("widget property '" + name + "' requires TableWidget");
             const int count = qt_widget_runtime_detail::toInt(value, name);
             if (count < 0)
                 throw std::runtime_error("widget property '" + name + "' cannot be negative");
-            if (name == "rowCount")
-                table->setRowCount(count);
+            if (table)
+            {
+                if (name == "rowCount")
+                    table->setRowCount(count);
+                else
+                    table->setColumnCount(count);
+            }
+            else if (auto *view = qobject_cast<QAbstractItemView *>(widget))
+            {
+                QStandardItemModel *model = qobject_cast<QStandardItemModel *>(view->model());
+                if (!model)
+                    throw std::runtime_error("widget property '" + name + "' requires an item view model");
+                if (name == "rowCount")
+                    model->setRowCount(count);
+                else
+                    model->setColumnCount(count);
+            }
             else
-                table->setColumnCount(count);
+                throw std::runtime_error("widget property '" + name + "' requires a table or item view");
         }
         else if (name == "date")
         {
@@ -893,6 +1255,98 @@ public:
             if (!date.isValid())
                 throw std::runtime_error("widget property 'date' must use YYYY-MM-DD format");
             dateEdit->setDate(date);
+        }
+        else if (name == "time")
+        {
+            auto *dateTimeEdit = qobject_cast<QDateTimeEdit *>(widget);
+            const auto *string = value.as_str();
+            if (!dateTimeEdit || !string)
+                throw std::runtime_error("widget property 'time' requires TimeEdit or DateTimeEdit and a string");
+            const QTime time = QTime::fromString(QString::fromStdString(string->value), Qt::ISODateWithMs);
+            if (!time.isValid())
+                throw std::runtime_error("widget property 'time' must use HH:mm:ss[.zzz] format");
+            dateTimeEdit->setTime(time);
+        }
+        else if (name == "dateTime")
+        {
+            auto *dateTimeEdit = qobject_cast<QDateTimeEdit *>(widget);
+            const auto *string = value.as_str();
+            if (!dateTimeEdit || !string)
+                throw std::runtime_error("widget property 'dateTime' requires DateTimeEdit and a string");
+            const QDateTime dateTime = QDateTime::fromString(QString::fromStdString(string->value), Qt::ISODateWithMs);
+            if (!dateTime.isValid())
+                throw std::runtime_error("widget property 'dateTime' must use ISO 8601 format");
+            dateTimeEdit->setDateTime(dateTime);
+        }
+        else if (name == "currentFont" || name == "currentText")
+        {
+            auto *fontCombo = qobject_cast<QFontComboBox *>(widget);
+            const auto *string = value.as_str();
+            if (!fontCombo || !string)
+                throw std::runtime_error("widget property '" + name + "' requires FontComboBox and a string");
+            QFont font = fontCombo->currentFont();
+            font.setFamily(QString::fromStdString(string->value));
+            fontCombo->setCurrentFont(font);
+        }
+        else if (name == "keySequence")
+        {
+            auto *keySequenceEdit = qobject_cast<QKeySequenceEdit *>(widget);
+            const auto *string = value.as_str();
+            if (!keySequenceEdit || !string)
+                throw std::runtime_error("widget property 'keySequence' requires KeySequenceEdit and a string");
+            keySequenceEdit->setKeySequence(QKeySequence::fromString(QString::fromStdString(string->value),
+                                                                      QKeySequence::PortableText));
+        }
+        else if (name == "buttons")
+        {
+            auto *buttonBox = qobject_cast<QDialogButtonBox *>(widget);
+            if (!buttonBox)
+                throw std::runtime_error("widget property 'buttons' requires DialogButtonBox");
+
+            QStringList names;
+            if (const auto *array = value.as_array())
+            {
+                for (const auto &item : array->value)
+                {
+                    const auto *text = item.as_str();
+                    if (!text)
+                        throw std::runtime_error("widget property 'buttons' requires strings");
+                    names.push_back(QString::fromStdString(text->value));
+                }
+            }
+            else if (const auto *string = value.as_str())
+                names = QString::fromStdString(string->value).split(',');
+            else
+                throw std::runtime_error("widget property 'buttons' requires a string or array of strings");
+
+            QDialogButtonBox::StandardButtons buttons;
+            for (const QString &name : names)
+            {
+                const QString normalized = name.trimmed().toLower();
+                if (normalized == "ok")
+                    buttons |= QDialogButtonBox::Ok;
+                else if (normalized == "cancel")
+                    buttons |= QDialogButtonBox::Cancel;
+                else if (normalized == "yes")
+                    buttons |= QDialogButtonBox::Yes;
+                else if (normalized == "no")
+                    buttons |= QDialogButtonBox::No;
+                else if (normalized == "save")
+                    buttons |= QDialogButtonBox::Save;
+                else if (normalized == "open")
+                    buttons |= QDialogButtonBox::Open;
+                else if (normalized == "apply")
+                    buttons |= QDialogButtonBox::Apply;
+                else if (normalized == "close")
+                    buttons |= QDialogButtonBox::Close;
+                else if (normalized == "reset")
+                    buttons |= QDialogButtonBox::Reset;
+                else if (normalized == "help")
+                    buttons |= QDialogButtonBox::Help;
+                else
+                    throw std::runtime_error("unsupported DialogButtonBox button '" + name.toStdString() + "'");
+            }
+            buttonBox->setStandardButtons(buttons);
         }
         else
             widget->setProperty(name.c_str(), qt_widget_runtime_detail::toVariant(value));
@@ -983,6 +1437,8 @@ private:
                 QObject::connect(progress, &QProgressBar::valueChanged, this, [this, widget](int) { notify(widget, {"value"}); });
             else if (auto *spinBox = qobject_cast<QSpinBox *>(widget))
                 QObject::connect(spinBox, qOverload<int>(&QSpinBox::valueChanged), this, [this, widget](int) { notify(widget, {"value"}); });
+            else if (auto *spinBox = qobject_cast<QDoubleSpinBox *>(widget))
+                QObject::connect(spinBox, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this, widget](double) { notify(widget, {"value"}); });
             else if (auto *comboBox = qobject_cast<QComboBox *>(widget))
                 QObject::connect(comboBox, qOverload<int>(&QComboBox::currentIndexChanged), this, [this, widget](int) { notify(widget, {"currentIndex", "currentText"}); });
             else if (auto *button = qobject_cast<QAbstractButton *>(widget))
@@ -995,8 +1451,23 @@ private:
                 QObject::connect(list, &QListWidget::currentRowChanged, this, [this, widget](int) { notify(widget, {"currentRow", "currentText"}); });
             else if (auto *table = qobject_cast<QTableWidget *>(widget))
                 QObject::connect(table, &QTableWidget::currentCellChanged, this, [this, widget](int, int, int, int) { notify(widget, {"currentRow", "currentColumn"}); });
-            else if (auto *dateEdit = qobject_cast<QDateEdit *>(widget))
-                QObject::connect(dateEdit, &QDateEdit::dateChanged, this, [this, widget](const QDate &) { notify(widget, {"date"}); });
+            else if (auto *view = qobject_cast<QAbstractItemView *>(widget))
+            {
+                if (view->selectionModel())
+                    QObject::connect(view->selectionModel(), &QItemSelectionModel::currentChanged, this,
+                                     [this, widget](const QModelIndex &, const QModelIndex &) {
+                                         notify(widget, {"currentRow", "currentColumn", "currentText"});
+                                     });
+            }
+            else if (auto *dateTimeEdit = qobject_cast<QDateTimeEdit *>(widget))
+            {
+                QObject::connect(dateTimeEdit, &QDateTimeEdit::dateChanged, this,
+                                 [this, widget](const QDate &) { notify(widget, {"date"}); });
+                QObject::connect(dateTimeEdit, &QDateTimeEdit::timeChanged, this,
+                                 [this, widget](const QTime &) { notify(widget, {"time"}); });
+                QObject::connect(dateTimeEdit, &QDateTimeEdit::dateTimeChanged, this,
+                                 [this, widget](const QDateTime &) { notify(widget, {"dateTime"}); });
+            }
             else if (auto *tabs = qobject_cast<QTabWidget *>(widget))
                 QObject::connect(tabs, &QTabWidget::currentChanged, this, [this, widget](int) { notify(widget, {"currentIndex"}); });
         }

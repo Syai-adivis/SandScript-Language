@@ -1,4 +1,4 @@
-num = tonum(prminput("please input a number:"));
+num = number(prminput("please input a number:"));
 sum = 0;
 i=1;
 tb = time_ms();
